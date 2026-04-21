@@ -1,6 +1,6 @@
 from flask import Flask
 
-from .config import get_config
+from .config import get_config, validate_runtime_config
 from .extensions import db
 from .routes import register_blueprints
 from .utils.errors import register_error_handlers
@@ -16,6 +16,7 @@ def create_app(config_override=None):
     app.json.ensure_ascii = False
 
     configure_logging(app)
+    validate_runtime_config(app)
     db.init_app(app)
     register_blueprints(app)
     register_error_handlers(app)
@@ -26,4 +27,3 @@ def create_app(config_override=None):
         db.create_all()
 
     return app
-

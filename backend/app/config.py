@@ -9,6 +9,9 @@ load_dotenv(BASE_DIR.parent / ".env")
 
 
 class Config:
+    FLASK_ENV = os.getenv("FLASK_ENV", "development")
+    DEBUG = False
+    TESTING = False
     SECRET_KEY = os.getenv("SECRET_KEY", "replace-me")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
@@ -27,9 +30,18 @@ class Config:
     WECHAT_APPID = os.getenv("WECHAT_APPID", "")
     WECHAT_APPSECRET = os.getenv("WECHAT_APPSECRET", "")
     WECHAT_USE_REAL_AUTH = os.getenv("WECHAT_USE_REAL_AUTH", "false").lower() == "true"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = False
+
+
+class ProductionConfig(Config):
+    FLASK_ENV = "production"
+    SESSION_COOKIE_SECURE = True
 
 
 class TestingConfig(Config):
+    FLASK_ENV = "testing"
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
 
@@ -37,4 +49,29 @@ class TestingConfig(Config):
 def get_config():
     if os.getenv("FLASK_ENV") == "testing":
         return TestingConfig
+    if os.getenv("FLASK_ENV") == "production":
+        return ProductionConfig
     return Config
+
+
+def validate_runtime_config(app):
+    if app.config.get("TESTING"):
+        return
+
+    environment = app.config.get("FLASK_ENV", "development")
+    secret_key = app.config.get("SECRET_KEY", "")
+    database_url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+
+    if environment == "production":
+        if not secret_key or secret_key == "replace-me":
+            raise RuntimeError("SECRET_KEY must be set to a non-default value in production.")
+
+        if database_url.startswith("sqlite"):
+            raise RuntimeError("SQLite must not be used in production. Set DATABASE_URL to a managed MySQL-compatible database.")
+
+        if app.config.get("WECHAT_USE_REAL_AUTH") and (
+            not app.config.get("WECHAT_APPID") or not app.config.get("WECHAT_APPSECRET")
+        ):
+            raise RuntimeError(
+                "WECHAT_APPID and WECHAT_APPSECRET are required when WECHAT_USE_REAL_AUTH=true in production."
+            )

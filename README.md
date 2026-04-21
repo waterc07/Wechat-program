@@ -98,6 +98,21 @@ LLM_TIMEOUT_SECONDS=30
 - 不要把真实密钥写入代码、README 或版本库
 - `LLM_BASE_URL` 默认就是 Bailian 兼容模式地址
 - 当前实现仍兼容旧变量名 `LLM_API_URL`，但建议统一使用 `LLM_BASE_URL`
+- 生产环境不要继续使用 SQLite；云托管应切换到 MySQL，并通过 `DATABASE_URL` 配置连接
+
+#### 生产 MySQL 连接串示例
+
+推荐在微信云托管环境变量中配置：
+
+```env
+DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
+```
+
+说明：
+
+- 驱动已通过 `PyMySQL` 支持
+- `charset=utf8mb4` 建议保留，避免中文和 emoji 兼容问题
+- 如果数据库实例要求 SSL，可按数据库服务商要求继续在连接串中追加参数
 
 #### 3. 启动后端
 
@@ -252,6 +267,38 @@ baseURL: 'http://192.168.1.10:5000'
 6. 点击“生成医生摘要”，确认报告页正常
 7. 切换到 `EN`，再测一条英文症状，确认前后端一起切换
 
+### 微信云托管部署提示
+
+如果你要将当前仓库部署到微信云托管：
+
+- 端口填 `80`
+- 目标目录填仓库根目录 `.`
+- Dockerfile 使用根目录下的 [Dockerfile](/d:/Users/Admin/Desktop/Wechat%20program/Dockerfile)
+- 生产环境变量至少应配置：
+
+```env
+FLASK_ENV=production
+SECRET_KEY=一个新的高强度随机字符串
+DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
+LOG_LEVEL=INFO
+
+LLM_PROVIDER=qwen
+LLM_API_KEY=YOUR_REAL_KEY_HERE
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen3.6-plus
+LLM_TIMEOUT_SECONDS=30
+
+WECHAT_USE_REAL_AUTH=false
+WECHAT_APPID=你的小程序 AppID
+WECHAT_APPSECRET=你的小程序 AppSecret
+```
+
+注意：
+
+- 当前后端已在 `production` 下禁止默认 `SECRET_KEY` 和 SQLite 启动
+- `.env` 不应再提交到 Git 仓库
+- 如果你曾把真实密钥提交过 Git 历史，请先轮换密钥再部署
+
 ### 安全边界
 
 - 本产品是预问诊辅助工具，不是诊断系统
@@ -375,6 +422,21 @@ Notes:
 - Never hardcode real secrets in code, the README, or the repository
 - `LLM_BASE_URL` defaults to the Bailian compatible-mode endpoint
 - The implementation still accepts the legacy `LLM_API_URL` name, but `LLM_BASE_URL` is preferred
+- Do not keep using SQLite in production; for Cloud Hosting you should switch to MySQL and provide it through `DATABASE_URL`
+
+#### Production MySQL connection string example
+
+Use an environment variable like:
+
+```env
+DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
+```
+
+Notes:
+
+- `PyMySQL` is now included as the driver
+- Keeping `charset=utf8mb4` is recommended for Chinese text and emoji compatibility
+- If your database requires SSL, append the required parameters according to your provider
 
 #### 3. Start the backend
 
@@ -513,6 +575,39 @@ Report page:
 5. Test one emergency symptom and confirm local escalation triggers
 6. Generate a doctor summary and confirm the report page works
 7. Switch to `EN`, then send an English symptom and confirm frontend and backend both switch together
+
+### WeChat Cloud Hosting Deployment Notes
+
+If you deploy this repository to WeChat Cloud Hosting:
+
+- Set the service port to `80`
+- Use the repository root `.` as the target directory
+- Use the root-level [Dockerfile](/d:/Users/Admin/Desktop/Wechat%20program/Dockerfile)
+- At minimum, configure these production environment variables:
+
+```env
+FLASK_ENV=production
+SECRET_KEY=a-new-strong-random-secret
+DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
+LOG_LEVEL=INFO
+
+LLM_PROVIDER=qwen
+LLM_API_KEY=YOUR_REAL_KEY_HERE
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen3.6-plus
+LLM_TIMEOUT_SECONDS=30
+
+WECHAT_USE_REAL_AUTH=false
+WECHAT_APPID=your-mini-program-appid
+WECHAT_APPSECRET=your-mini-program-appsecret
+```
+
+Important:
+
+- The backend now refuses to start in `production` with the default `SECRET_KEY`
+- The backend now refuses to start in `production` with SQLite
+- `.env` should not be committed to Git
+- If real secrets were ever committed into Git history, rotate them before deployment
 
 ### Safety Boundaries
 
