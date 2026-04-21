@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "pages/chat/index",
+    "pages/report/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "预问诊助手",
+    "navigationBarBackgroundColor": "#0e7490",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f4f7fb",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
+

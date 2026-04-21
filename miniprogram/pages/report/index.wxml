@@ -1,0 +1,45 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">预问诊结构化摘要</view>
+    <view class="header-subtitle">供医生快速了解患者主诉与基础情况，不能替代医生正式诊断。</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading card">
+    <view class="muted">报告生成中，请稍候...</view>
+  </view>
+
+  <view wx:elif="{{report}}" class="content">
+    <view class="report-card card">
+      <view class="field-label">症状概述</view>
+      <view class="field-value">{{report.symptoms_summary}}</view>
+    </view>
+
+    <view class="report-card card">
+      <view class="field-label">可能方向</view>
+      <block wx:for="{{report.possible_conditions}}" wx:key="*this">
+        <view class="tag">{{item}}</view>
+      </block>
+    </view>
+
+    <view class="report-card card">
+      <view class="field-label">建议科室</view>
+      <view class="field-value">{{report.recommended_department}}</view>
+    </view>
+
+    <view class="report-card card">
+      <view class="field-label">紧急程度</view>
+      <view class="field-value urgency">{{report.urgency_level}}</view>
+    </view>
+
+    <view class="report-card card">
+      <view class="field-label">下一步建议</view>
+      <view class="field-value">{{report.next_step_advice}}</view>
+    </view>
+
+    <view class="report-card card warning">
+      <view class="field-label">免责声明</view>
+      <view class="field-value">{{report.disclaimer || disclaimer}}</view>
+    </view>
+  </view>
+</view>
+

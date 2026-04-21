@@ -1,0 +1,47 @@
+<view class="page">
+  <view class="hero">
+    <view class="hero-title">就诊前症状整理</view>
+    <view class="hero-subtitle">按聊天方式补充症状、持续时间和伴随情况，系统会生成给医生参考的结构化摘要。</view>
+  </view>
+
+  <view class="disclaimer card">
+    <view class="disclaimer-label">安全提示</view>
+    <view class="disclaimer-text">{{disclaimer}}</view>
+  </view>
+
+  <scroll-view scroll-y class="messages card">
+    <block wx:if="{{messages.length}}">
+      <block wx:for="{{messages}}" wx:key="id">
+        <view class="message-row {{item.role === 'assistant' ? 'assistant-row' : 'user-row'}}">
+          <view class="message-role">{{item.role === 'assistant' ? '助手' : '患者'}}</view>
+          <view class="message-bubble {{item.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'}}">
+            <text>{{item.content}}</text>
+          </view>
+        </view>
+      </block>
+    </block>
+    <view wx:else class="empty-state">
+      <view class="section-title">先描述您的主要不适</view>
+      <view class="muted">例如：发烧两天、咳嗽、喉咙痛，或肚子疼伴随恶心。</view>
+    </view>
+  </scroll-view>
+
+  <view class="composer card">
+    <textarea
+      class="composer-input"
+      maxlength="2000"
+      placeholder="请输入症状、持续时间、严重程度和伴随症状"
+      value="{{inputMessage}}"
+      bindinput="onInputChange"
+    />
+    <view class="composer-actions">
+      <button class="secondary-button" bindtap="generateReport" loading="{{reportLoading}}" disabled="{{!consultationId}}">
+        生成医生摘要
+      </button>
+      <button class="primary-button" bindtap="sendMessage" loading="{{loading}}">
+        发送
+      </button>
+    </view>
+  </view>
+</view>
+

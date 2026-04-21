@@ -1,0 +1,135 @@
+.page {
+  min-height: 100vh;
+  padding: 32rpx 24rpx 40rpx;
+  background:
+    radial-gradient(circle at top right, rgba(14, 116, 144, 0.18), transparent 32%),
+    linear-gradient(180deg, #e6f7fb 0%, #f4f7fb 36%, #f4f7fb 100%);
+  box-sizing: border-box;
+}
+
+.hero {
+  margin-bottom: 24rpx;
+}
+
+.hero-title {
+  font-size: 46rpx;
+  font-weight: 700;
+  color: #082f49;
+}
+
+.hero-subtitle {
+  margin-top: 12rpx;
+  line-height: 1.7;
+  font-size: 26rpx;
+  color: #0f766e;
+}
+
+.disclaimer {
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  border: 2rpx solid rgba(249, 115, 22, 0.16);
+  background: #fff7ed;
+}
+
+.disclaimer-label {
+  margin-bottom: 8rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #c2410c;
+}
+
+.disclaimer-text {
+  line-height: 1.7;
+  font-size: 24rpx;
+  color: #7c2d12;
+}
+
+.messages {
+  height: 760rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.empty-state {
+  padding: 80rpx 20rpx;
+  text-align: center;
+}
+
+.message-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24rpx;
+}
+
+.user-row {
+  align-items: flex-end;
+}
+
+.assistant-row {
+  align-items: flex-start;
+}
+
+.message-role {
+  margin-bottom: 8rpx;
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.message-bubble {
+  max-width: 88%;
+  padding: 20rpx 22rpx;
+  border-radius: 24rpx;
+  line-height: 1.7;
+  font-size: 27rpx;
+  white-space: pre-wrap;
+}
+
+.assistant-bubble {
+  background: #ecfeff;
+  color: #164e63;
+}
+
+.user-bubble {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.composer {
+  padding: 24rpx;
+}
+
+.composer-input {
+  width: 100%;
+  min-height: 180rpx;
+  padding: 16rpx;
+  border-radius: 18rpx;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20rpx;
+}
+
+.primary-button,
+.secondary-button {
+  flex: 1;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+}
+
+.secondary-button {
+  margin-right: 16rpx;
+}
+
+.primary-button {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.secondary-button {
+  background: #e2e8f0;
+  color: #0f172a;
+}

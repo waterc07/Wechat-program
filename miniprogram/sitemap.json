@@ -1,0 +1,10 @@
+{
+  "desc": "Medical pre-diagnosis assistant MVP sitemap",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}
+

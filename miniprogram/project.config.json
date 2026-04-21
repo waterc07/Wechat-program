@@ -1,0 +1,15 @@
+{
+  "description": "Medical pre-diagnosis Mini Program MVP",
+  "appid": "TODO_REPLACE_WITH_REAL_MINIPROGRAM_APPID",
+  "projectname": "pre-diagnosis-mvp",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false
+  }
+}
+
