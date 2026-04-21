@@ -1,4 +1,4 @@
-from app.constants import DISCLAIMER_TEXT
+from app.constants import get_disclaimer
 from app.services.llm_service import LLMService
 from app.services.llm_service import LLMServiceError
 
@@ -97,7 +97,7 @@ def test_report_missing_fields_are_filled_with_safe_defaults(monkeypatch):
     assert result["recommended_department"]
     assert result["urgency_level"]
     assert result["next_step_advice"]
-    assert result["disclaimer"] == DISCLAIMER_TEXT
+    assert result["disclaimer"] == get_disclaimer("zh-CN")
 
 
 def test_chat_retries_once_after_timeout(monkeypatch):
@@ -147,3 +147,49 @@ def test_chat_retries_once_after_timeout(monkeypatch):
     assert call_count["value"] == 2
     assert result["provider"] == "qwen"
     assert "重试后成功" in result["content"]
+
+
+def test_chat_markdown_is_normalized_for_miniprogram(monkeypatch):
+    class FakeResponse:
+        text = ""
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "## 预问诊摘要\n"
+                                "- **主诉**：发烧、咳嗽\n"
+                                "- **建议**：补充 `体温` 和症状持续时间\n"
+                            )
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("app.services.llm_service.requests.post", lambda *args, **kwargs: FakeResponse())
+
+    service = LLMService(
+        {
+            "LLM_PROVIDER": "qwen",
+            "LLM_API_KEY": "test-key",
+            "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "LLM_MODEL": "qwen3.6-plus",
+            "LLM_TIMEOUT_SECONDS": 30,
+        }
+    )
+
+    result = service.generate_chat_reply(
+        [{"role": "user", "content": "我发烧咳嗽"}],
+        {"latest_user_message": "我发烧咳嗽"},
+    )
+
+    assert "##" not in result["content"]
+    assert "**" not in result["content"]
+    assert "`" not in result["content"]
+    assert "主诉：发烧、咳嗽" in result["content"]
+    assert "建议：补充体温和症状持续时间" in result["content"]

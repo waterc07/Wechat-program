@@ -1,28 +1,69 @@
 <view class="page">
   <view class="hero">
-    <view class="hero-title">就诊前症状整理</view>
-    <view class="hero-subtitle">按聊天方式补充症状、持续时间和伴随情况，系统会生成给医生参考的结构化摘要。</view>
+    <view class="hero-topbar">
+      <view class="hero-copy">
+        <view class="hero-title">{{t.heroTitle}}</view>
+        <view class="hero-subtitle">{{t.heroSubtitle}}</view>
+      </view>
+      <view class="locale-switch">
+        <block wx:for="{{localeOptions}}" wx:key="code">
+          <view
+            class="locale-pill {{locale === item.code ? 'locale-pill-active' : ''}}"
+            data-locale="{{item.code}}"
+            bindtap="switchLocale"
+          >
+            {{item.shortLabel}}
+          </view>
+        </block>
+      </view>
+    </view>
   </view>
 
   <view class="disclaimer card">
-    <view class="disclaimer-label">安全提示</view>
+    <view class="disclaimer-label">{{t.disclaimerTitle}}</view>
     <view class="disclaimer-text">{{disclaimer}}</view>
   </view>
 
-  <scroll-view scroll-y class="messages card">
+  <view class="utility-row">
+    <view class="endpoint-tip">{{t.currentEndpoint}}: {{baseURL}}</view>
+    <button class="new-session-button" bindtap="promptResetConversation">
+      {{t.startNewConsultation}}
+    </button>
+  </view>
+
+  <scroll-view scroll-y class="messages card" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
     <block wx:if="{{messages.length}}">
       <block wx:for="{{messages}}" wx:key="id">
-        <view class="message-row {{item.role === 'assistant' ? 'assistant-row' : 'user-row'}}">
-          <view class="message-role">{{item.role === 'assistant' ? '助手' : '患者'}}</view>
-          <view class="message-bubble {{item.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'}}">
-            <text>{{item.content}}</text>
+        <view
+          id="{{item.viewId}}"
+          class="message-row {{item.role === 'assistant' ? 'assistant-row' : 'user-row'}}"
+        >
+          <view class="message-role">{{item.role === 'assistant' ? t.assistantRole : t.patientRole}}</view>
+          <view
+            class="message-bubble {{item.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'}} {{item.pending ? 'pending-bubble' : ''}}"
+          >
+            <block wx:if="{{item.pending}}">
+              <view class="thinking-row">
+                <text>{{item.content}}</text>
+                <view class="thinking-dots">
+                  <text class="thinking-dot dot-1">•</text>
+                  <text class="thinking-dot dot-2">•</text>
+                  <text class="thinking-dot dot-3">•</text>
+                </view>
+              </view>
+            </block>
+            <text wx:else>{{item.content}}</text>
+          </view>
+          <view class="message-meta {{item.role === 'assistant' ? 'assistant-meta' : 'user-meta'}}">
+            <text wx:if="{{item.displayTime}}">{{item.displayTime}}</text>
+            <text wx:if="{{item.statusText}}"> · {{item.statusText}}</text>
           </view>
         </view>
       </block>
     </block>
     <view wx:else class="empty-state">
-      <view class="section-title">先描述您的主要不适</view>
-      <view class="muted">例如：发烧两天、咳嗽、喉咙痛，或肚子疼伴随恶心。</view>
+      <view class="section-title">{{t.emptyTitle}}</view>
+      <view class="muted">{{t.emptyHint}}</view>
     </view>
   </scroll-view>
 
@@ -30,18 +71,22 @@
     <textarea
       class="composer-input"
       maxlength="2000"
-      placeholder="请输入症状、持续时间、严重程度和伴随症状"
+      placeholder="{{t.inputPlaceholder}}"
       value="{{inputMessage}}"
       bindinput="onInputChange"
     />
     <view class="composer-actions">
-      <button class="secondary-button" bindtap="generateReport" loading="{{reportLoading}}" disabled="{{!consultationId}}">
-        生成医生摘要
+      <button
+        class="secondary-button"
+        bindtap="generateReport"
+        loading="{{reportLoading}}"
+        disabled="{{!consultationId}}"
+      >
+        {{reportLoading ? t.generatingReport : t.generateReport}}
       </button>
-      <button class="primary-button" bindtap="sendMessage" loading="{{loading}}">
-        发送
+      <button class="primary-button" bindtap="sendMessage" disabled="{{loading}}">
+        {{loading ? t.sending : t.send}}
       </button>
     </view>
   </view>
 </view>
-

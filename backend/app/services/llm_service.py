@@ -4,7 +4,11 @@ import time
 
 import requests
 
-from ..constants import DEFAULT_ASSISTANT_QUESTION, DISCLAIMER_TEXT
+from ..constants import (
+    get_default_assistant_question,
+    get_disclaimer,
+    normalize_locale,
+)
 from ..utils.errors import ServiceError
 from ..utils.logging import get_logger
 
@@ -58,6 +62,7 @@ class LLMService:
                     "Provider returned empty chat content.",
                     data={"response": data},
                 )
+            content = self._normalize_chat_text(content)
             return {
                 "content": content,
                 "risk_level": "low",
@@ -94,11 +99,11 @@ class LLMService:
         except Exception as error:  # noqa: BLE001
             raise LLMServiceError(data={"detail": str(error)}) from error
 
-    def build_chat_fallback(self, latest_user_message):
-        return self._mock_chat_reply({"latest_user_message": latest_user_message})
+    def build_chat_fallback(self, latest_user_message, locale="zh-CN"):
+        return self._mock_chat_reply({"latest_user_message": latest_user_message, "locale": locale})
 
-    def build_report_fallback(self, conversation_text):
-        return self._mock_report({"conversation_text": conversation_text})
+    def build_report_fallback(self, conversation_text, locale="zh-CN"):
+        return self._mock_report({"conversation_text": conversation_text, "locale": locale})
 
     def _use_external_provider(self):
         if self.provider == "mock":
@@ -196,6 +201,21 @@ class LLMService:
             return None
         return parsed
 
+    def _normalize_chat_text(self, content):
+        normalized = content.replace("\r\n", "\n").strip()
+        normalized = re.sub(r"```(?:[\w+-]+)?\s*", "", normalized)
+        normalized = normalized.replace("```", "")
+        normalized = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", normalized)
+        normalized = re.sub(r"(\*\*|__)(.*?)\1", r"\2", normalized)
+        normalized = re.sub(r"(?<!\*)\*(?!\*)(.*?)\*(?<!\*)", r"\1", normalized)
+        normalized = re.sub(r"(?<!_)_(?!_)(.*?)_(?<!_)", r"\1", normalized)
+        normalized = re.sub(r"`([^`]+)`", r"\1", normalized)
+        normalized = re.sub(r"(?m)^\s*[-*•]\s+", "• ", normalized)
+        normalized = re.sub(r"(?m)^\s*\d+\.\s+", lambda match: match.group(0).strip() + " ", normalized)
+        normalized = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", normalized)
+        normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+        return normalized.strip()
+
     def _normalize_report_payload(self, payload, fallback_context):
         safe_defaults = self._mock_report(fallback_context)
         normalized = {}
@@ -216,8 +236,8 @@ class LLMService:
                 continue
 
             if field == "disclaimer":
-                normalized[field] = DISCLAIMER_TEXT
-                if value != DISCLAIMER_TEXT:
+                normalized[field] = safe_defaults["disclaimer"]
+                if value != safe_defaults["disclaimer"]:
                     logger.warning(
                         "Provider report disclaimer replaced with local safety disclaimer."
                     )
@@ -248,36 +268,66 @@ class LLMService:
 
     def _mock_chat_reply(self, fallback_context):
         latest_user_message = fallback_context.get("latest_user_message", "")
-        summary = latest_user_message[:120] or "您已提供初步症状描述"
-        content = (
-            f"已收到您的症状描述：{summary}。当前信息仅用于就诊前整理，不能替代医生诊断。"
-            f"{DEFAULT_ASSISTANT_QUESTION}"
-        )
+        locale = normalize_locale(fallback_context.get("locale"))
+
+        if locale == "en-US":
+            summary = latest_user_message[:120] or "You have provided an initial symptom description"
+            content = (
+                f"I've received your symptom description: {summary}. "
+                "The current information is only for pre-visit organization and does not replace a doctor's diagnosis. "
+                f"{get_default_assistant_question(locale)}"
+            )
+        else:
+            summary = latest_user_message[:120] or "您已提供初步症状描述"
+            content = (
+                f"已收到您的症状描述：{summary}。当前信息仅用于就诊前整理，不能替代医生诊断。"
+                f"{get_default_assistant_question(locale)}"
+            )
         return {"content": content, "risk_level": "low", "provider": "mock"}
 
     def _mock_report(self, fallback_context):
         conversation_text = fallback_context.get("conversation_text", "")
+        locale = normalize_locale(fallback_context.get("locale"))
         lower_text = conversation_text.lower()
         urgency_level = (
             "medium"
             if any(word in lower_text for word in ["pain", "疼", "痛", "发烧", "fever"])
             else "low"
         )
-        possible_conditions = (
-            ["上呼吸道感染", "消化系统不适"]
-            if any(
-                word in lower_text
-                for word in ["发烧", "fever", "咳", "cough", "恶心", "nausea"]
+        if locale == "en-US":
+            possible_conditions = (
+                ["Upper respiratory infection", "Digestive discomfort"]
+                if any(
+                    word in lower_text
+                    for word in ["发烧", "fever", "咳", "cough", "恶心", "nausea"]
+                )
+                else ["Needs further evaluation", "Common mild discomfort"]
             )
-            else ["待进一步检查明确", "常见轻症不适"]
-        )
-        return {
-            "symptoms_summary": conversation_text[:300] or "患者已提供初步症状描述。",
-            "possible_conditions": possible_conditions,
-            "recommended_department": "全科门诊",
-            "urgency_level": urgency_level,
-            "next_step_advice": (
+            symptoms_summary = conversation_text[:300] or "The patient has provided an initial symptom description."
+            recommended_department = "General medicine"
+            next_step_advice = (
+                "Please add the symptom onset time, duration, triggers, and associated symptoms, and visit an in-person clinic "
+                "for further evaluation by a doctor as soon as possible."
+            )
+        else:
+            possible_conditions = (
+                ["上呼吸道感染", "消化系统不适"]
+                if any(
+                    word in lower_text
+                    for word in ["发烧", "fever", "咳", "cough", "恶心", "nausea"]
+                )
+                else ["待进一步检查明确", "常见轻症不适"]
+            )
+            symptoms_summary = conversation_text[:300] or "患者已提供初步症状描述。"
+            recommended_department = "全科门诊"
+            next_step_advice = (
                 "建议补充症状起始时间、持续时长、诱因和伴随症状，并尽快前往线下门诊由医生进一步评估。"
-            ),
-            "disclaimer": DISCLAIMER_TEXT,
+            )
+        return {
+            "symptoms_summary": symptoms_summary,
+            "possible_conditions": possible_conditions,
+            "recommended_department": recommended_department,
+            "urgency_level": urgency_level,
+            "next_step_advice": next_step_advice,
+            "disclaimer": get_disclaimer(locale),
         }

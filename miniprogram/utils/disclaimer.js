@@ -4,4 +4,3 @@ const PATIENT_DISCLAIMER =
 module.exports = {
   PATIENT_DISCLAIMER
 }
-

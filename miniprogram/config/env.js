@@ -1,7 +1,7 @@
 const env = {
+  // 微信开发者工具如无法访问 127.0.0.1，请改为你电脑的局域网 IP，例如 http://192.168.1.10:5000
   baseURL: 'http://127.0.0.1:5000',
-  timeout: 15000
+  timeout: 70000
 }
 
 module.exports = env
-

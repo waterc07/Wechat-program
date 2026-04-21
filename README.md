@@ -1,20 +1,25 @@
 # 医疗预问诊小程序 MVP
 
-一个可本地运行的端到端 MVP：
+一个可本地运行、可演示的端到端 MVP：
 
 - 前端：原生微信小程序
 - 后端：Python Flask
 - 数据库：SQLite 默认，本地零配置启动；生产可切换到 MySQL 兼容连接串
-- AI：通过 `LLMService` 抽象外部模型提供方，默认支持 `mock` 和阿里云百炼 Bailian 的 OpenAI 兼容模式
+- AI：通过 `LLMService` 抽象外部模型提供方，当前支持 `mock` 和阿里云百炼 Bailian 的 OpenAI 兼容模式
+- 部署目标：本地验证后可迁移到微信云托管
 
-## 当前能力
+## 当前已完成能力
 
 - 患者通过聊天界面输入症状
 - 后端保存用户、问诊、消息、报告
 - 紧急关键词命中时优先走本地高风险拦截，不调用模型
-- 普通场景可调用 Qwen 模型生成辅助回复
+- 普通场景可调用 Qwen 生成预问诊辅助回复
 - 可根据会话生成结构化预问诊报告
 - 所有患者侧输出均包含免责声明，不作为最终诊断
+- 小程序支持中英文界面切换
+- 小程序切换语言后，后端聊天回复、报告内容、免责声明也会同步切换语言
+- 聊天页支持“发送后即时落消息 + AI 思考中占位 + 失败回滚”
+- 报告页支持“返回继续问诊 / 重新生成报告 / 开始新问诊”
 
 ## 目录结构
 
@@ -23,12 +28,12 @@
 ├─ backend/                 # Flask 后端
 ├─ miniprogram/             # 微信小程序前端
 ├─ requirements.txt
-├─ .env.example
 └─ README.md
 ```
 
 ## 后端接口
 
+- `GET /`
 - `GET /api/health`
 - `POST /api/auth/wx-login`
 - `POST /api/chat`
@@ -57,7 +62,7 @@ python -m pip install -r requirements.txt
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 为 `.env` 并按需修改。
+在项目根目录新建 `.env` 并按需填写。
 
 本地最小可运行配置：
 
@@ -96,7 +101,10 @@ LLM_TIMEOUT_SECONDS=30
 python backend/run.py
 ```
 
-默认地址：`http://127.0.0.1:5000`
+默认地址：
+
+- 根路径：[http://127.0.0.1:5000/](http://127.0.0.1:5000/)
+- 健康检查：[http://127.0.0.1:5000/api/health](http://127.0.0.1:5000/api/health)
 
 ### 4. 运行测试
 
@@ -120,7 +128,7 @@ $userId = $login.data.user.id
 $userId
 ```
 
-### 2. `/api/chat` 示例
+### 2. 中文 `/api/chat` 示例
 
 ```powershell
 $chat = Invoke-RestMethod -Method Post `
@@ -129,12 +137,28 @@ $chat = Invoke-RestMethod -Method Post `
   -Body (@{
     user_id = $userId
     message = "我发烧两天，喉咙痛，还有一点咳嗽"
+    locale = "zh-CN"
   } | ConvertTo-Json)
 
 $chat
 ```
 
-### 3. `/api/report/generate` 示例
+### 3. 英文 `/api/chat` 示例
+
+```powershell
+$chatEn = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:5000/api/chat" `
+  -ContentType "application/json" `
+  -Body (@{
+    user_id = $userId
+    message = "I have had a fever for two days and a sore throat"
+    locale = "en-US"
+  } | ConvertTo-Json)
+
+$chatEn
+```
+
+### 4. `/api/report/generate` 示例
 
 ```powershell
 $consultationId = $chat.data.consultation_id
@@ -144,6 +168,7 @@ Invoke-RestMethod -Method Post `
   -ContentType "application/json" `
   -Body (@{
     consultation_id = $consultationId
+    locale = "zh-CN"
   } | ConvertTo-Json)
 ```
 
@@ -160,7 +185,10 @@ Invoke-RestMethod -Method Post `
 
 - 高风险症状先走本地规则拦截
 - 非高风险时才调用模型
+- 模型超时时会自动重试 1 次
 - 模型失败时自动降级到本地安全回复
+- 聊天文本进入小程序前会去掉 Markdown 标记
+- 支持按 `locale` 输出中英文内容
 
 报告生成：
 
@@ -169,17 +197,56 @@ Invoke-RestMethod -Method Post `
 - 安全解析响应
 - 字段缺失时自动补安全默认值并记录 warning
 - 解析失败时自动返回降级报告，不会导致接口崩溃
+- 支持按 `locale` 输出中英文内容
 
-## 微信小程序说明
+## 微信小程序联调说明
 
 使用微信开发者工具打开 `miniprogram/` 目录。
 
-需要改动的本地配置：
+### 1. 需要确认的本地配置
 
 - [env.js](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/config/env.js) 中的 `baseURL`
 - [project.config.json](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/project.config.json) 中的 `appid`
 
-当前前端仍使用 stub 登录，因此即使没有接入真实微信登录，也可以先联调后端接口。
+如果开发者工具不能访问 `127.0.0.1`，把 `baseURL` 改成你电脑的局域网 IP，例如：
+
+```js
+baseURL: 'http://192.168.1.10:5000'
+```
+
+### 2. 开发者工具设置
+
+- 本地调试时关闭或放开“合法域名校验”
+- 修改配置后建议执行一次“清缓存并编译”
+
+### 3. 当前小程序交互
+
+聊天页：
+
+- 发送后用户消息立即入列
+- 同时显示 `AI 正在思考` 占位
+- 请求失败时会完整回滚到发送前状态
+- 支持 `开始新问诊`
+- 支持 `中 / EN` 切换
+- 显示消息时间和发送状态
+
+报告页：
+
+- 展示结构化摘要字段
+- 支持 `返回继续问诊`
+- 支持 `重新生成报告`
+- 支持 `开始新问诊`
+- 支持 `中 / EN` 切换
+
+### 4. 推荐联调步骤
+
+1. 启动后端
+2. 打开微信开发者工具并导入 `miniprogram/`
+3. 先验证 mock 登录
+4. 发送一条普通症状，确认聊天回复正常
+5. 测试一条高风险症状，确认本地拦截生效
+6. 点击“生成医生摘要”，确认报告页正常
+7. 切换到 `EN`，再测一条英文症状，确认前后端一起切换
 
 ## 安全边界
 
@@ -187,6 +254,14 @@ Invoke-RestMethod -Method Post `
 - 不输出最终诊断
 - 保留本地紧急症状拦截，优先级高于任何模型调用
 - 患者侧始终保留免责声明
+- 高风险症状如胸痛、严重呼吸困难、失去意识、严重出血等会优先走本地升级路径
+
+## 当前已知限制
+
+- 登录仍是 stub，尚未接入真实微信 `code2Session`
+- 英文模式下的真实模型输出质量仍取决于 Qwen 实际返回，不是完全固定模板
+- 当前未加入数据库迁移工具，模型结构变更仍以 MVP 方式处理
+- 前端仍以原生小程序为主，未接入更复杂的富文本渲染
 
 ## 已留出的 TODO
 

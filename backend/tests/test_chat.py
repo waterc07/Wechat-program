@@ -47,6 +47,20 @@ def test_chat_emergency_guardrail(client):
     assert "急诊" in payload["data"]["assistant_message"]["content"]
 
 
+def test_chat_negated_emergency_terms_do_not_trigger_guardrail(client):
+    user_id = login_user(client, nickname="否定高风险用户")
+
+    chat_response = client.post(
+        "/api/chat",
+        json={"user_id": user_id, "message": "已经两天了，最高38.7度，没有胸痛和呼吸困难"},
+    )
+    payload = chat_response.get_json()
+
+    assert chat_response.status_code == 200
+    assert payload["data"]["risk_level"] == "low"
+    assert "急诊" not in payload["data"]["assistant_message"]["content"]
+
+
 def test_chat_fallback_when_llm_fails(client, monkeypatch):
     user_id = login_user(client, nickname="降级用户")
 

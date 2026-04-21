@@ -13,7 +13,7 @@ report_bp = Blueprint("report", __name__, url_prefix="/api/report")
 def generate_report():
     payload = validate_report_payload(get_json_payload())
     report_service = ReportService(current_app.config)
-    report = report_service.generate_report(payload["consultation_id"])
+    report = report_service.generate_report(payload["consultation_id"], payload["locale"])
     return success_response(
         {
             "report": report,
@@ -29,4 +29,3 @@ def get_report(consultation_id):
     if report is None:
         raise NotFoundError("Report not found.")
     return success_response({"report": report})
-

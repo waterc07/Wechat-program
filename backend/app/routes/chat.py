@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app
 
-from ..constants import DISCLAIMER_TEXT
+from ..constants import get_disclaimer, get_emergency_escalation_message
 from ..schemas.request_validators import get_json_payload, validate_chat_payload
 from ..schemas.response import success_response
 from ..services.consultation_service import ConsultationService
@@ -30,12 +30,13 @@ def chat():
         payload["message"],
         risk_level="low",
     )
+    disclaimer = get_disclaimer(payload["locale"])
 
     risk_result = risk_service.detect(payload["message"])
     if risk_result["risk_level"] == "high":
         user_message.risk_level = "high"
         consultation.risk_level = "high"
-        assistant_text = f"{risk_result['message']}\n\n{DISCLAIMER_TEXT}"
+        assistant_text = f"{get_emergency_escalation_message(payload['locale'])}\n\n{disclaimer}"
         assistant_message = consultation_service.add_message(
             consultation,
             "assistant",
@@ -49,7 +50,7 @@ def chat():
                 "assistant_message": assistant_message.to_dict(),
                 "risk_level": "high",
                 "matched_keyword": risk_result["matched_keyword"],
-                "disclaimer": DISCLAIMER_TEXT,
+                "disclaimer": disclaimer,
             },
             message="Emergency risk detected.",
         )
@@ -60,12 +61,12 @@ def chat():
         for item in consultation.messages
         if item.id != user_message.id and item.role in {"user", "assistant"}
     ]
-    prompt_messages = build_chat_messages(history, payload["message"])
+    prompt_messages = build_chat_messages(history, payload["message"], payload["locale"])
 
     try:
         reply = llm_service.generate_chat_reply(
             prompt_messages,
-            {"latest_user_message": payload["message"]},
+            {"latest_user_message": payload["message"], "locale": payload["locale"]},
         )
     except LLMServiceError as error:
         logger.warning(
@@ -73,12 +74,12 @@ def chat():
             consultation.id,
             error.data,
         )
-        reply = llm_service.build_chat_fallback(payload["message"])
+        reply = llm_service.build_chat_fallback(payload["message"], payload["locale"])
 
     assistant_message = consultation_service.add_message(
         consultation,
         "assistant",
-        f"{reply['content']}\n\n{DISCLAIMER_TEXT}",
+        f"{reply['content']}\n\n{disclaimer}",
         risk_level=reply["risk_level"],
     )
 
@@ -88,7 +89,7 @@ def chat():
             "created": created,
             "assistant_message": assistant_message.to_dict(),
             "risk_level": reply["risk_level"],
-            "disclaimer": DISCLAIMER_TEXT,
+            "disclaimer": disclaimer,
         },
         message="Chat reply generated.",
     )

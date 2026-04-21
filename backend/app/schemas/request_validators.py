@@ -1,5 +1,6 @@
 from flask import request
 
+from ..constants import normalize_locale
 from ..utils.errors import ValidationError
 
 
@@ -28,6 +29,7 @@ def validate_chat_payload(payload):
     user_id = payload.get("user_id")
     consultation_id = payload.get("consultation_id")
     message = (payload.get("message") or "").strip()
+    locale = normalize_locale(payload.get("locale"))
 
     if not isinstance(user_id, int):
         raise ValidationError("user_id must be an integer.")
@@ -42,12 +44,13 @@ def validate_chat_payload(payload):
         "user_id": user_id,
         "consultation_id": consultation_id,
         "message": message,
+        "locale": locale,
     }
 
 
 def validate_report_payload(payload):
     consultation_id = payload.get("consultation_id")
+    locale = normalize_locale(payload.get("locale"))
     if not isinstance(consultation_id, int):
         raise ValidationError("consultation_id must be an integer.")
-    return {"consultation_id": consultation_id}
-
+    return {"consultation_id": consultation_id, "locale": locale}

@@ -11,6 +11,17 @@
   margin-bottom: 24rpx;
 }
 
+.hero-topbar {
+  display: flex;
+  gap: 20rpx;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hero-copy {
+  flex: 1;
+}
+
 .hero-title {
   font-size: 46rpx;
   font-weight: 700;
@@ -22,6 +33,28 @@
   line-height: 1.7;
   font-size: 26rpx;
   color: #0f766e;
+}
+
+.locale-switch {
+  display: inline-flex;
+  padding: 8rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.locale-pill {
+  min-width: 64rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  text-align: center;
+  color: #0f766e;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.locale-pill-active {
+  background: #0f766e;
+  color: #ffffff;
 }
 
 .disclaimer {
@@ -42,6 +75,35 @@
   line-height: 1.7;
   font-size: 24rpx;
   color: #7c2d12;
+}
+
+.utility-row {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.endpoint-tip {
+  flex: 1;
+  padding: 16rpx 20rpx;
+  border-radius: 18rpx;
+  background: rgba(15, 118, 110, 0.08);
+  color: #0f766e;
+  font-size: 22rpx;
+  word-break: break-all;
+}
+
+.new-session-button {
+  margin: 0;
+  padding: 0 28rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 24rpx;
+  box-shadow: 0 10rpx 28rpx rgba(15, 23, 42, 0.08);
 }
 
 .messages {
@@ -89,9 +151,55 @@
   color: #164e63;
 }
 
+.pending-bubble {
+  background: #f0fdfa;
+  border: 2rpx solid rgba(15, 118, 110, 0.12);
+}
+
 .user-bubble {
   background: #0f766e;
   color: #ffffff;
+}
+
+.message-meta {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.user-meta {
+  text-align: right;
+}
+
+.assistant-meta {
+  text-align: left;
+}
+
+.thinking-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+}
+
+.thinking-dot {
+  margin-left: 4rpx;
+  font-size: 34rpx;
+  line-height: 1;
+  color: #0f766e;
+  animation: thinkingPulse 1.2s infinite ease-in-out;
+}
+
+.dot-2 {
+  animation-delay: 0.2s;
+}
+
+.dot-3 {
+  animation-delay: 0.4s;
 }
 
 .composer {
@@ -129,7 +237,26 @@
   color: #ffffff;
 }
 
+.primary-button[disabled] {
+  background: #5b9b95;
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .secondary-button {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+@keyframes thinkingPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-4rpx);
+  }
 }

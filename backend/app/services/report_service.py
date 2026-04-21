@@ -1,6 +1,6 @@
 import json
 
-from ..constants import DISCLAIMER_TEXT
+from ..constants import get_disclaimer
 from ..extensions import db
 from ..models import Report
 from ..utils.logging import get_logger
@@ -18,18 +18,18 @@ class ReportService:
         self.consultation_service = ConsultationService()
         self.llm_service = LLMService(config)
 
-    def generate_report(self, consultation_id):
+    def generate_report(self, consultation_id, locale="zh-CN"):
         consultation = self.consultation_service.get_consultation(consultation_id)
         conversation_messages = [message.to_dict() for message in consultation.messages]
         conversation_text = "\n".join(
             [f"{item['role']}: {item['content']}" for item in conversation_messages]
         )
-        prompt_messages = build_report_messages(conversation_messages)
+        prompt_messages = build_report_messages(conversation_messages, locale)
 
         try:
             report_payload = self.llm_service.generate_report(
                 prompt_messages,
-                {"conversation_text": conversation_text},
+                {"conversation_text": conversation_text, "locale": locale},
             )
         except LLMServiceError as error:
             logger.warning(
@@ -37,7 +37,7 @@ class ReportService:
                 consultation.id,
                 error.data,
             )
-            report_payload = self.llm_service.build_report_fallback(conversation_text)
+            report_payload = self.llm_service.build_report_fallback(conversation_text, locale)
 
         report = Report(
             consultation_id=consultation.id,
@@ -46,7 +46,7 @@ class ReportService:
             recommended_department=report_payload["recommended_department"],
             urgency_level=report_payload["urgency_level"],
             next_step_advice=report_payload["next_step_advice"],
-            disclaimer=report_payload.get("disclaimer", DISCLAIMER_TEXT),
+            disclaimer=report_payload.get("disclaimer", get_disclaimer(locale)),
             raw_payload=json.dumps(report_payload, ensure_ascii=False),
         )
         db.session.add(report)

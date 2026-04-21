@@ -1,10 +1,22 @@
 const api = require('../../utils/api')
-const { PATIENT_DISCLAIMER } = require('../../utils/disclaimer')
+const env = require('../../config/env')
+const {
+  LOCALE_OPTIONS,
+  formatTime,
+  getStoredLocale,
+  getTranslations,
+  setStoredLocale
+} = require('../../utils/i18n')
 
 Page({
   data: {
-    disclaimer: PATIENT_DISCLAIMER,
+    locale: getStoredLocale(),
+    localeOptions: LOCALE_OPTIONS,
+    t: getTranslations(getStoredLocale()),
+    disclaimer: getTranslations(getStoredLocale()).patientDisclaimer,
+    baseURL: env.baseURL,
     messages: [],
+    scrollIntoView: '',
     inputMessage: '',
     consultationId: null,
     userId: null,
@@ -12,8 +24,46 @@ Page({
     reportLoading: false
   },
 
-  onLoad() {
+  onLoad(options) {
+    const locale = getApp().globalData.locale || getStoredLocale()
+    this.applyLocale(locale)
+
+    if (options && options.reset === '1') {
+      this.resetConversation(false)
+    }
+
     this.ensureUserReady()
+  },
+
+  onShow() {
+    const locale = getApp().globalData.locale || getStoredLocale()
+    if (locale !== this.data.locale) {
+      this.applyLocale(locale)
+    }
+  },
+
+  applyLocale(locale) {
+    const t = getTranslations(locale)
+    wx.setNavigationBarTitle({
+      title: t.chatNavTitle
+    })
+
+    this.setData({
+      locale,
+      t,
+      disclaimer: t.patientDisclaimer,
+      messages: this.relabelMessages(this.data.messages, t)
+    })
+  },
+
+  switchLocale(event) {
+    const locale = event.currentTarget.dataset.locale
+    if (!locale || locale === this.data.locale) {
+      return
+    }
+    setStoredLocale(locale)
+    getApp().globalData.locale = locale
+    this.applyLocale(locale)
   },
 
   ensureUserReady() {
@@ -29,9 +79,9 @@ Page({
         .then((user) => {
           this.setData({ userId: user.id })
         })
-        .catch(() => {
+        .catch((error) => {
           wx.showToast({
-            title: '登录失败，请稍后重试',
+            title: error.message || this.data.t.loginFailed,
             icon: 'none'
           })
         })
@@ -45,7 +95,7 @@ Page({
   },
 
   sendMessage() {
-    const { inputMessage, consultationId, userId, loading } = this.data
+    const { inputMessage, consultationId, userId, loading, t } = this.data
     const message = inputMessage.trim()
 
     if (loading) {
@@ -53,37 +103,71 @@ Page({
     }
     if (!userId) {
       wx.showToast({
-        title: '用户尚未初始化完成',
+        title: t.userNotReady,
         icon: 'none'
       })
       return
     }
     if (!message) {
       wx.showToast({
-        title: '请输入症状描述',
+        title: t.inputRequired,
         icon: 'none'
       })
       return
     }
 
-    this.setData({ loading: true })
+    const previousMessages = this.data.messages.slice()
+    const previousScrollIntoView = this.data.scrollIntoView
+    const timestamp = Date.now()
+    const optimisticMessages = this.data.messages.concat([
+      this.buildOptimisticMessage({
+        id: `temp-user-${timestamp}`,
+        role: 'user',
+        content: message,
+        timestamp,
+        pending: false,
+        statusKey: 'sending',
+        statusText: t.statusSending
+      }),
+      this.buildOptimisticMessage({
+        id: `temp-assistant-${timestamp}`,
+        role: 'assistant',
+        content: t.thinking,
+        timestamp,
+        pending: true,
+        statusKey: 'thinking',
+        statusText: t.statusThinking
+      })
+    ])
+
+    this.setData({
+      loading: true,
+      inputMessage: '',
+      messages: optimisticMessages,
+      scrollIntoView: `msg-temp-assistant-${timestamp}`
+    })
 
     api
       .chat({
         user_id: userId,
         consultation_id: consultationId,
-        message
+        message,
+        locale: this.data.locale
       })
       .then((data) => {
         this.setData({
-          consultationId: data.consultation_id,
-          inputMessage: ''
+          consultationId: data.consultation_id
         })
         return this.refreshMessages(data.consultation_id)
       })
       .catch((error) => {
+        this.setData({
+          inputMessage: message,
+          messages: previousMessages,
+          scrollIntoView: previousScrollIntoView
+        })
         wx.showToast({
-          title: error.message || '发送失败',
+          title: error.message || t.sendFailed,
           icon: 'none'
         })
       })
@@ -96,24 +180,77 @@ Page({
     return api
       .getMessages(consultationId)
       .then((data) => {
+        const normalizedMessages = this.normalizeMessages(data.messages)
         this.setData({
           consultationId,
-          messages: data.messages
+          messages: normalizedMessages,
+          scrollIntoView:
+            normalizedMessages.length > 0
+              ? normalizedMessages[normalizedMessages.length - 1].viewId
+              : ''
         })
       })
       .catch((error) => {
         wx.showToast({
-          title: error.message || '获取消息失败',
+          title: error.message || this.data.t.fetchMessagesFailed,
           icon: 'none'
         })
       })
   },
 
+  normalizeMessages(messages) {
+    const { t } = this.data
+    return (messages || []).map((item) => ({
+      ...item,
+      pending: false,
+      viewId: `msg-${item.id}`,
+      timestampSource: item.created_at,
+      displayTime: formatTime(item.created_at),
+      statusKey: item.role === 'user' ? 'sent' : '',
+      statusText: item.role === 'user' ? t.statusSent : ''
+    }))
+  },
+
+  relabelMessages(messages, t) {
+    return (messages || []).map((item) => ({
+      ...item,
+      displayTime: formatTime(item.timestampSource || item.created_at),
+      statusText: this.getStatusText(item.statusKey, t)
+    }))
+  },
+
+  getStatusText(statusKey, t) {
+    if (statusKey === 'sending') {
+      return t.statusSending
+    }
+    if (statusKey === 'thinking') {
+      return t.statusThinking
+    }
+    if (statusKey === 'sent') {
+      return t.statusSent
+    }
+    return ''
+  },
+
+  buildOptimisticMessage({ id, role, content, timestamp, pending, statusKey, statusText }) {
+    return {
+      id,
+      role,
+      content,
+      pending,
+      statusKey,
+      viewId: `msg-${id}`,
+      timestampSource: timestamp,
+      displayTime: formatTime(timestamp),
+      statusText
+    }
+  },
+
   generateReport() {
-    const { consultationId, reportLoading } = this.data
+    const { consultationId, reportLoading, t } = this.data
     if (!consultationId) {
       wx.showToast({
-        title: '请先完成至少一轮对话',
+        title: t.needConversation,
         icon: 'none'
       })
       return
@@ -124,7 +261,7 @@ Page({
 
     this.setData({ reportLoading: true })
     api
-      .generateReport({ consultation_id: consultationId })
+      .generateReport({ consultation_id: consultationId, locale: this.data.locale })
       .then(() => {
         wx.navigateTo({
           url: `/pages/report/index?consultationId=${consultationId}`
@@ -132,13 +269,49 @@ Page({
       })
       .catch((error) => {
         wx.showToast({
-          title: error.message || '生成报告失败',
+          title: error.message || t.reportFailed,
           icon: 'none'
         })
       })
       .finally(() => {
         this.setData({ reportLoading: false })
       })
+  },
+
+  promptResetConversation() {
+    const { t, loading, reportLoading } = this.data
+    if (loading || reportLoading) {
+      return
+    }
+
+    wx.showModal({
+      title: t.startNewConsultationTitle,
+      content: t.startNewConsultationContent,
+      confirmText: t.confirm,
+      cancelText: t.cancel,
+      success: (res) => {
+        if (res.confirm) {
+          this.resetConversation(true)
+        }
+      }
+    })
+  },
+
+  resetConversation(showToast) {
+    this.setData({
+      messages: [],
+      scrollIntoView: '',
+      inputMessage: '',
+      consultationId: null,
+      loading: false,
+      reportLoading: false
+    })
+
+    if (showToast) {
+      wx.showToast({
+        title: this.data.t.startNewConsultationDone,
+        icon: 'none'
+      })
+    }
   }
 })
-
