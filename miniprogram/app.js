@@ -1,5 +1,10 @@
 const api = require('./utils/api')
+const env = require('./config/env')
 const { getStoredLocale, getTranslations } = require('./utils/i18n')
+
+function getAuthCacheKey() {
+  return `authState:${env.baseURL}`
+}
 
 App({
   globalData: {
@@ -10,6 +15,12 @@ App({
   },
 
   onLaunch() {
+    const cachedAuth = wx.getStorageSync(getAuthCacheKey())
+    if (cachedAuth && cachedAuth.userId) {
+      this.globalData.userId = cachedAuth.userId
+      this.globalData.userInfo = cachedAuth.userInfo || null
+    }
+
     this.globalData.loginReady = this.initAuth()
   },
 
@@ -27,7 +38,12 @@ App({
             .then((data) => {
               this.globalData.userId = data.user.id
               this.globalData.userInfo = data.user
-              wx.setStorageSync('userId', data.user.id)
+              wx.setStorageSync(getAuthCacheKey(), {
+                userId: data.user.id,
+                userInfo: data.user,
+                baseURL: env.baseURL
+              })
+              wx.removeStorageSync('userId')
               resolve(data.user)
             })
             .catch((error) => {

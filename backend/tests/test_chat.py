@@ -77,4 +77,5 @@ def test_chat_fallback_when_llm_fails(client, monkeypatch):
 
     assert chat_response.status_code == 200
     assert payload["success"] is True
-    assert "补充症状持续时间" in payload["data"]["assistant_message"]["content"]
+    assert "头痛已经持续多久" in payload["data"]["assistant_message"]["content"]
+    assert "疼痛部位和严重程度" in payload["data"]["assistant_message"]["content"]

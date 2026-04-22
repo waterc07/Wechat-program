@@ -14,4 +14,4 @@ COPY README.md ./README.md
 
 EXPOSE 80
 
-CMD ["python", "backend/run.py"]
+CMD ["sh", "-c", "gunicorn --chdir backend --bind 0.0.0.0:${PORT:-80} --workers 2 --threads 4 --timeout 180 wsgi:app"]

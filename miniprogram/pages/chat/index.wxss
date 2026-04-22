@@ -79,18 +79,30 @@
 
 .utility-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 16rpx;
-  align-items: center;
+  align-items: stretch;
   margin-bottom: 24rpx;
 }
 
 .endpoint-tip {
-  flex: 1;
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 16rpx 20rpx;
   border-radius: 18rpx;
   background: rgba(15, 118, 110, 0.08);
+}
+
+.endpoint-label {
+  margin-bottom: 6rpx;
   color: #0f766e;
-  font-size: 22rpx;
+  font-size: 20rpx;
+}
+
+.endpoint-value {
+  color: #155e75;
+  font-size: 24rpx;
+  line-height: 1.5;
   word-break: break-all;
 }
 
@@ -99,6 +111,7 @@
   padding: 0 28rpx;
   height: 72rpx;
   line-height: 72rpx;
+  min-width: 240rpx;
   border-radius: 999rpx;
   background: #ffffff;
   color: #0f172a;

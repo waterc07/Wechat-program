@@ -25,7 +25,10 @@
   </view>
 
   <view class="utility-row">
-    <view class="endpoint-tip">{{t.currentEndpoint}}: {{baseURL}}</view>
+    <view class="endpoint-tip">
+      <view class="endpoint-label">{{t.currentEndpoint}}</view>
+      <view class="endpoint-value">{{baseURLDisplay}}</view>
+    </view>
     <button class="new-session-button" bindtap="promptResetConversation">
       {{t.startNewConsultation}}
     </button>

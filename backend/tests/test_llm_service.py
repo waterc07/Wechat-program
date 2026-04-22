@@ -193,3 +193,21 @@ def test_chat_markdown_is_normalized_for_miniprogram(monkeypatch):
     assert "`" not in result["content"]
     assert "主诉：发烧、咳嗽" in result["content"]
     assert "建议：补充体温和症状持续时间" in result["content"]
+
+
+def test_chat_fallback_avoids_reasking_fever_when_already_mentioned():
+    service = LLMService({"LLM_PROVIDER": "mock"})
+
+    result = service.build_chat_fallback("我现在发烧头痛", "zh-CN")
+
+    assert "是否伴有发热" not in result["content"]
+    assert "最高体温" in result["content"]
+
+
+def test_chat_fallback_asks_headache_specific_follow_up():
+    service = LLMService({"LLM_PROVIDER": "mock"})
+
+    result = service.build_chat_fallback("我头痛两天", "zh-CN")
+
+    assert "疼痛部位" in result["content"]
+    assert "严重程度" in result["content"]

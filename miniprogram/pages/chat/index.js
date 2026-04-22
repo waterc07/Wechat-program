@@ -15,6 +15,7 @@ Page({
     t: getTranslations(getStoredLocale()),
     disclaimer: getTranslations(getStoredLocale()).patientDisclaimer,
     baseURL: env.baseURL,
+    baseURLDisplay: '',
     messages: [],
     scrollIntoView: '',
     inputMessage: '',
@@ -27,6 +28,9 @@ Page({
   onLoad(options) {
     const locale = getApp().globalData.locale || getStoredLocale()
     this.applyLocale(locale)
+    this.setData({
+      baseURLDisplay: this.getBaseURLDisplay(env.baseURL)
+    })
 
     if (options && options.reset === '1') {
       this.resetConversation(false)
@@ -52,8 +56,22 @@ Page({
       locale,
       t,
       disclaimer: t.patientDisclaimer,
+      baseURLDisplay: this.getBaseURLDisplay(this.data.baseURL),
       messages: this.relabelMessages(this.data.messages, t)
     })
+  },
+
+  getBaseURLDisplay(url) {
+    if (!url) {
+      return ''
+    }
+
+    try {
+      const normalized = url.replace(/^https?:\/\//, '')
+      return normalized.replace(/\/$/, '')
+    } catch (error) {
+      return url
+    }
   },
 
   switchLocale(event) {
@@ -68,9 +86,8 @@ Page({
 
   ensureUserReady() {
     const app = getApp()
-    const cachedUserId = wx.getStorageSync('userId')
-    if (cachedUserId) {
-      this.setData({ userId: cachedUserId })
+    if (app.globalData.userId) {
+      this.setData({ userId: app.globalData.userId })
       return
     }
 
