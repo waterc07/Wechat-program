@@ -18,7 +18,7 @@ NEGATION_HINTS = [
     "denies",
 ]
 
-CLAUSE_SPLIT_PATTERN = re.compile(r"(?:[，,。；;！!？?\n]|但是|但|不过|however|but)", re.IGNORECASE)
+CLAUSE_SPLIT_PATTERN = re.compile(r"(?:[，。；,;\n]|但是|不过|however|but)", re.IGNORECASE)
 
 
 class RiskService:

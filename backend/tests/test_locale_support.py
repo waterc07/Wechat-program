@@ -24,7 +24,8 @@ def test_mock_fallback_uses_english_locale():
         "en-US",
     )
 
-    assert "I've received your symptom description" in chat_result["content"]
+    assert "So far I understand the main issue as:" in chat_result["content"]
+    assert "highest temperature" in chat_result["content"]
     assert report_result["recommended_department"] == "General medicine"
     assert report_result["disclaimer"] == get_disclaimer("en-US")
 
@@ -48,4 +49,4 @@ def test_chat_endpoint_returns_english_disclaimer(client):
 
     assert chat_response.status_code == 200
     assert payload["data"]["disclaimer"] == get_disclaimer("en-US")
-    assert get_disclaimer("en-US") in payload["data"]["assistant_message"]["content"]
+    assert get_disclaimer("en-US") not in payload["data"]["assistant_message"]["content"]

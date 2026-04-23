@@ -21,6 +21,9 @@ Page({
     inputMessage: '',
     consultationId: null,
     userId: null,
+    historyVisible: false,
+    historyLoading: false,
+    historyItems: [],
     loading: false,
     reportLoading: false
   },
@@ -61,7 +64,8 @@ Page({
       t,
       disclaimer: t.patientDisclaimer,
       baseURLDisplay: this.getBaseURLDisplay(this.data.baseURL),
-      messages: this.relabelMessages(this.data.messages, t)
+      messages: this.relabelMessages(this.data.messages, t),
+      historyItems: this.normalizeConsultations(this.data.historyItems)
     })
   },
 
@@ -92,13 +96,14 @@ Page({
     const app = getApp()
     if (app.globalData.userId) {
       this.setData({ userId: app.globalData.userId })
-      return
+      return this.fetchHistory({ silent: true })
     }
 
     if (app.globalData.loginReady) {
-      app.globalData.loginReady
+      return app.globalData.loginReady
         .then((user) => {
           this.setData({ userId: user.id })
+          return this.fetchHistory({ silent: true })
         })
         .catch((error) => {
           wx.showToast({
@@ -107,6 +112,8 @@ Page({
           })
         })
     }
+
+    return Promise.resolve()
   },
 
   onInputChange(event) {
@@ -152,7 +159,9 @@ Page({
           this.setData({
             consultationId: donePayload.consultation_id
           })
-          this.refreshMessages(donePayload.consultation_id)
+          this.refreshMessages(donePayload.consultation_id).finally(() => {
+            this.fetchHistory({ silent: true })
+          })
         },
         fail: (error) => {
           this.rollbackStreamState(
@@ -411,6 +420,7 @@ Page({
         const normalizedMessages = this.normalizeMessages(data.messages)
         this.setData({
           consultationId,
+          historyItems: this.normalizeConsultations(this.data.historyItems),
           messages: normalizedMessages,
           scrollIntoView:
             normalizedMessages.length > 0
@@ -426,6 +436,73 @@ Page({
       })
   },
 
+  fetchHistory({ silent = false } = {}) {
+    const { userId, t } = this.data
+    if (!userId) {
+      return Promise.resolve([])
+    }
+
+    this.setData({ historyLoading: true })
+    return api
+      .getConsultations(userId)
+      .then((data) => {
+        const historyItems = this.normalizeConsultations(data.consultations)
+        this.setData({ historyItems })
+        return historyItems
+      })
+      .catch((error) => {
+        if (!silent) {
+          wx.showToast({
+            title: error.message || t.historyLoadFailed,
+            icon: 'none'
+          })
+        }
+        return []
+      })
+      .finally(() => {
+        this.setData({ historyLoading: false })
+      })
+  },
+
+  openHistory() {
+    const { loading, reportLoading } = this.data
+    if (loading || reportLoading) {
+      return
+    }
+
+    this.setData({ historyVisible: true })
+    this.fetchHistory()
+  },
+
+  closeHistory() {
+    this.setData({ historyVisible: false })
+  },
+
+  resumeConsultation(event) {
+    const targetId = Number(event.currentTarget.dataset.id)
+    if (!targetId) {
+      return
+    }
+
+    const { consultationId, loading, reportLoading } = this.data
+    if (loading || reportLoading) {
+      return
+    }
+
+    this.closeHistory()
+    if (consultationId === targetId && this.data.messages.length) {
+      return
+    }
+
+    this.abortActiveStream()
+    this.setData({
+      consultationId: targetId,
+      loading: false,
+      reportLoading: false
+    })
+    this.refreshMessages(targetId)
+  },
+
   normalizeMessages(messages) {
     const { t } = this.data
     return (messages || []).map((item) => ({
@@ -439,12 +516,51 @@ Page({
     }))
   },
 
+  normalizeConsultations(consultations) {
+    const { t, consultationId } = this.data
+    return (consultations || []).map((item) => ({
+      ...item,
+      titleText: item.chief_complaint || item.last_message_preview || `#${item.id}`,
+      previewText: item.last_message_preview || item.chief_complaint || '',
+      displayTime: this.formatHistoryTime(item.last_message_at || item.updated_at),
+      riskText: item.risk_level === 'high' ? t.historyRiskHigh : t.historyRiskNormal,
+      isActive: item.id === consultationId
+    }))
+  },
+
   relabelMessages(messages, t) {
     return (messages || []).map((item) => ({
       ...item,
       displayTime: formatTime(item.timestampSource || item.created_at),
       statusText: this.getStatusText(item.statusKey, t)
     }))
+  },
+
+  formatHistoryTime(value) {
+    if (!value) {
+      return ''
+    }
+
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return ''
+    }
+
+    const now = new Date()
+    const isSameDay =
+      now.getFullYear() === date.getFullYear() &&
+      now.getMonth() === date.getMonth() &&
+      now.getDate() === date.getDate()
+
+    const hours = `${date.getHours()}`.padStart(2, '0')
+    const minutes = `${date.getMinutes()}`.padStart(2, '0')
+    if (isSameDay) {
+      return `${hours}:${minutes}`
+    }
+
+    const month = `${date.getMonth() + 1}`.padStart(2, '0')
+    const day = `${date.getDate()}`.padStart(2, '0')
+    return `${month}/${day} ${hours}:${minutes}`
   },
 
   getStatusText(statusKey, t) {
@@ -531,9 +647,12 @@ Page({
       scrollIntoView: '',
       inputMessage: '',
       consultationId: null,
+      historyVisible: false,
       loading: false,
       reportLoading: false
     })
+
+    this.fetchHistory({ silent: true })
 
     if (showToast) {
       wx.showToast({

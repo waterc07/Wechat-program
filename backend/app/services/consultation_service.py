@@ -1,3 +1,5 @@
+from sqlalchemy.orm import selectinload
+
 from ..extensions import db
 from ..models import Consultation, Message, User
 from ..utils.errors import NotFoundError
@@ -53,3 +55,43 @@ class ConsultationService:
     def list_messages(self, consultation_id):
         consultation = self.get_consultation(consultation_id)
         return [message.to_dict() for message in consultation.messages], consultation
+
+    def list_consultations(self, user_id):
+        self.get_user(user_id)
+
+        consultations = (
+            Consultation.query.options(
+                selectinload(Consultation.messages),
+                selectinload(Consultation.reports),
+            )
+            .filter_by(user_id=user_id)
+            .order_by(Consultation.created_at.desc())
+            .all()
+        )
+
+        items = []
+        for consultation in consultations:
+            last_message = consultation.messages[-1] if consultation.messages else None
+            last_message_at = (
+                last_message.created_at.isoformat()
+                if last_message is not None
+                else consultation.updated_at.isoformat()
+            )
+            last_message_preview = (
+                last_message.content.strip().replace("\n", " ")[:120]
+                if last_message is not None
+                else consultation.chief_complaint
+            )
+            items.append(
+                {
+                    **consultation.to_dict(),
+                    "message_count": len(consultation.messages),
+                    "report_count": len(consultation.reports),
+                    "last_message_at": last_message_at,
+                    "last_message_preview": last_message_preview,
+                    "latest_message_role": last_message.role if last_message is not None else "",
+                }
+            )
+
+        items.sort(key=lambda item: item["last_message_at"], reverse=True)
+        return items

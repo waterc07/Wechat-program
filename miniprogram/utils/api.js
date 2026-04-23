@@ -31,6 +31,12 @@ function getMessages(consultationId) {
   })
 }
 
+function getConsultations(userId) {
+  return request({
+    url: `/api/consultations?user_id=${userId}`
+  })
+}
+
 function generateReport(data) {
   return request({
     url: '/api/report/generate',
@@ -49,6 +55,7 @@ module.exports = {
   wxLogin,
   chat,
   chatStream,
+  getConsultations,
   getMessages,
   generateReport,
   getReport

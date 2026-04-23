@@ -85,7 +85,7 @@ def chat():
     assistant_message = consultation_service.add_message(
         consultation,
         "assistant",
-        f"{reply['content']}\n\n{disclaimer}",
+        reply["content"],
         risk_level=reply["risk_level"],
     )
 
@@ -209,7 +209,7 @@ def chat_stream():
         assistant_message = consultation_service.add_message(
             consultation_for_save,
             "assistant",
-            f"{final_reply['content']}\n\n{disclaimer}",
+            final_reply["content"],
             risk_level=final_reply["risk_level"],
         )
 

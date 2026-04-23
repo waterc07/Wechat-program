@@ -56,9 +56,14 @@
           {{locale === 'en-US' ? 'Real-time pre-visit symptom collection and AI guidance.' : '实时记录症状描述与问诊辅助回复。'}}
         </view>
       </view>
-      <button class="ghost-button" bindtap="promptResetConversation">
-        {{t.startNewConsultation}}
-      </button>
+      <view class="toolbar-actions">
+        <button class="ghost-button ghost-button-secondary" bindtap="openHistory">
+          {{t.historyButton}}
+        </button>
+        <button class="ghost-button" bindtap="promptResetConversation">
+          {{t.startNewConsultation}}
+        </button>
+      </view>
     </view>
 
     <scroll-view scroll-y class="messages" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
@@ -141,6 +146,60 @@
       <button class="primary-button" bindtap="sendMessage" disabled="{{loading}}">
         {{loading ? t.sending : t.send}}
       </button>
+    </view>
+  </view>
+
+  <view wx:if="{{historyVisible}}" class="history-overlay">
+    <view class="history-mask" bindtap="closeHistory"></view>
+    <view class="history-sheet panel-shell">
+      <view class="history-header">
+        <view>
+          <view class="surface-title">{{t.historyTitle}}</view>
+          <view class="surface-subtitle">{{t.historySubtitle}}</view>
+        </view>
+        <button class="history-close" bindtap="closeHistory">×</button>
+      </view>
+
+      <view wx:if="{{historyLoading}}" class="history-status">
+        {{t.historyLoading}}
+      </view>
+
+      <block wx:elif="{{historyItems.length}}">
+        <scroll-view scroll-y class="history-list">
+          <block wx:for="{{historyItems}}" wx:key="id">
+            <view
+              class="history-item {{item.isActive ? 'history-item-active' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="resumeConsultation"
+            >
+              <view class="history-item-top">
+                <view class="history-item-title">{{item.titleText}}</view>
+                <view class="history-item-time">{{item.displayTime}}</view>
+              </view>
+              <view class="history-item-preview">{{item.previewText}}</view>
+              <view class="history-item-meta">
+                <view class="history-chip {{item.risk_level === 'high' ? 'history-chip-danger' : ''}}">
+                  {{item.riskText}}
+                </view>
+                <view class="history-chip" wx:if="{{item.report_count}}">
+                  {{t.historyReports}} {{item.report_count}}
+                </view>
+                <view class="history-chip">
+                  {{t.historyMessages}} {{item.message_count}}
+                </view>
+                <view class="history-chip history-chip-current" wx:if="{{item.isActive}}">
+                  {{t.historyCurrent}}
+                </view>
+              </view>
+            </view>
+          </block>
+        </scroll-view>
+      </block>
+
+      <view wx:else class="history-empty">
+        <view class="section-title">{{t.historyEmptyTitle}}</view>
+        <view class="muted empty-hint">{{t.historyEmptyHint}}</view>
+      </view>
     </view>
   </view>
 </view>

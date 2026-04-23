@@ -463,6 +463,78 @@ class LLMService:
             return "请补充症状已经持续多久，是否有痰或发热，以及吞咽或咳嗽时是否明显加重。"
         return get_default_assistant_question(locale)
 
+    def _mock_chat_reply(self, fallback_context):
+        latest_user_message = fallback_context.get("latest_user_message", "")
+        locale = normalize_locale(fallback_context.get("locale"))
+        summary = self._summarize_user_message(latest_user_message, locale)
+        acknowledgement = self._build_acknowledgement(latest_user_message, locale)
+        follow_up_question = self._build_contextual_follow_up(latest_user_message, locale)
+
+        if locale == "en-US":
+            content = (
+                f"{acknowledgement} "
+                f"So far I understand the main issue as: {summary}. "
+                f"{follow_up_question}"
+            )
+        else:
+            content = (
+                f"{acknowledgement}"
+                f"我先理解为：{summary}。"
+                f"{follow_up_question}"
+            )
+        return {"content": content, "risk_level": "low", "provider": "mock"}
+
+    def _build_acknowledgement(self, latest_user_message, locale):
+        text = (latest_user_message or "").lower()
+
+        if locale == "en-US":
+            if any(word in text for word in ["pain", "hurt", "ache"]):
+                return "I understand that this has been uncomfortable."
+            if any(word in text for word in ["fever", "temperature", "cough", "vomit", "nausea"]):
+                return "Thanks, that gives me a clearer picture of what you're experiencing."
+            return "I understand what you've described."
+
+        if any(word in text for word in ["痛", "疼", "难受"]):
+            return "明白，这样确实会让人不舒服。"
+        if any(word in text for word in ["发烧", "发热", "咳嗽", "恶心", "呕吐"]):
+            return "收到，这样我对您目前的情况更清楚一些。"
+        return "收到，我已经理解您刚才描述的情况。"
+
+    def _summarize_user_message(self, latest_user_message, locale):
+        cleaned = re.sub(r"\s+", " ", (latest_user_message or "")).strip()
+        if cleaned:
+            return cleaned[:120]
+
+        if locale == "en-US":
+            return "you have described an initial symptom concern"
+        return "您提供了初步的症状描述"
+
+    def _build_contextual_follow_up(self, latest_user_message, locale):
+        text = (latest_user_message or "").lower()
+
+        if locale == "en-US":
+            if any(word in text for word in ["fever", "temperature"]):
+                return (
+                    "To narrow it down, how many days has this lasted, what was the highest temperature, and have you also had cough, sore throat, or chills?"
+                )
+            if any(word in text for word in ["headache", "head pain"]):
+                return (
+                    "What I still need most is how long the headache has lasted, where it is located, and whether it comes with fever, nausea, or dizziness?"
+                )
+            if any(word in text for word in ["cough", "sore throat", "throat pain"]):
+                return (
+                    "What I want to confirm next is how long this has lasted, whether you have sputum or fever, and whether swallowing or coughing makes it worse?"
+                )
+            return get_default_assistant_question(locale)
+
+        if any(word in text for word in ["发烧", "发热", "低烧", "高烧", "体温"]):
+            return "我现在最想确认的是：这种情况已经持续几天了，最高体温大概多少，还伴有咳嗽、咽痛或怕冷吗？"
+        if any(word in text for word in ["头痛", "头疼", "头部疼痛"]):
+            return "我还想进一步确认：头痛持续了多久，主要在什么部位，严重程度大概怎样，另外有没有恶心、头晕或发热？"
+        if any(word in text for word in ["咳嗽", "喉咙痛", "咽痛", "嗓子痛"]):
+            return "接下来我想确认一下：症状持续多久了，有没有痰或发热，吞咽时会不会更明显？"
+        return get_default_assistant_question(locale)
+
     def _mock_report(self, fallback_context):
         conversation_text = fallback_context.get("conversation_text", "")
         locale = normalize_locale(fallback_context.get("locale"))

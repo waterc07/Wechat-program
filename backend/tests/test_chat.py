@@ -22,6 +22,7 @@ def test_chat_creates_consultation_and_messages(client):
     assert payload["success"] is True
     assert payload["data"]["consultation_id"] > 0
     assert payload["data"]["assistant_message"]["role"] == "assistant"
+    assert "不能替代医生面诊" not in payload["data"]["assistant_message"]["content"]
 
     messages_response = client.get(
         f"/api/consultations/{payload['data']['consultation_id']}/messages"
@@ -77,5 +78,5 @@ def test_chat_fallback_when_llm_fails(client, monkeypatch):
 
     assert chat_response.status_code == 200
     assert payload["success"] is True
-    assert "头痛已经持续多久" in payload["data"]["assistant_message"]["content"]
-    assert "疼痛部位和严重程度" in payload["data"]["assistant_message"]["content"]
+    assert "头痛持续了多久" in payload["data"]["assistant_message"]["content"]
+    assert "什么部位" in payload["data"]["assistant_message"]["content"]

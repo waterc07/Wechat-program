@@ -1,8 +1,7 @@
+import requests
+
 from app.constants import get_disclaimer
 from app.services.llm_service import LLMService
-from app.services.llm_service import LLMServiceError
-
-import requests
 
 
 def test_qwen_chat_uses_compatible_endpoint(monkeypatch):
@@ -163,7 +162,7 @@ def test_chat_markdown_is_normalized_for_miniprogram(monkeypatch):
                         "message": {
                             "content": (
                                 "## 预问诊摘要\n"
-                                "- **主诉**：发烧、咳嗽\n"
+                                "- **主诉**：发热、咳嗽\n"
                                 "- **建议**：补充 `体温` 和症状持续时间\n"
                             )
                         }
@@ -184,14 +183,14 @@ def test_chat_markdown_is_normalized_for_miniprogram(monkeypatch):
     )
 
     result = service.generate_chat_reply(
-        [{"role": "user", "content": "我发烧咳嗽"}],
-        {"latest_user_message": "我发烧咳嗽"},
+        [{"role": "user", "content": "我发热咳嗽"}],
+        {"latest_user_message": "我发热咳嗽"},
     )
 
     assert "##" not in result["content"]
     assert "**" not in result["content"]
     assert "`" not in result["content"]
-    assert "主诉：发烧、咳嗽" in result["content"]
+    assert "主诉：发热、咳嗽" in result["content"]
     assert "建议：补充体温和症状持续时间" in result["content"]
 
 
@@ -209,5 +208,5 @@ def test_chat_fallback_asks_headache_specific_follow_up():
 
     result = service.build_chat_fallback("我头痛两天", "zh-CN")
 
-    assert "疼痛部位" in result["content"]
+    assert "什么部位" in result["content"]
     assert "严重程度" in result["content"]
