@@ -1,4 +1,4 @@
-const { request } = require('./request')
+const { request, streamRequest } = require('./request')
 
 function wxLogin(data) {
   return request({
@@ -13,6 +13,15 @@ function chat(data) {
     url: '/api/chat',
     method: 'POST',
     data
+  })
+}
+
+function chatStream(data, handlers = {}) {
+  return streamRequest({
+    url: '/api/chat/stream',
+    method: 'POST',
+    data,
+    ...handlers
   })
 }
 
@@ -39,8 +48,8 @@ function getReport(consultationId) {
 module.exports = {
   wxLogin,
   chat,
+  chatStream,
   getMessages,
   generateReport,
   getReport
 }
-

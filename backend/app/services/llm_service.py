@@ -73,6 +73,57 @@ class LLMService:
         except Exception as error:  # noqa: BLE001
             raise LLMServiceError(data={"detail": str(error)}) from error
 
+    def stream_chat_reply(self, messages, fallback_context):
+        if not self._use_external_provider():
+            yield from self._stream_fallback_chat_reply(fallback_context)
+            return
+
+        accumulated = []
+
+        try:
+            for payload in self._stream_chat_completion(messages=messages, temperature=0.2):
+                delta = self._extract_stream_message_delta(payload)
+                if not delta:
+                    continue
+                accumulated.append(delta)
+                yield {"type": "delta", "content": delta}
+
+            content = self._normalize_chat_text("".join(accumulated))
+            if not content:
+                raise LLMServiceError("Provider returned empty chat content.")
+
+            yield {
+                "type": "complete",
+                "content": content,
+                "risk_level": "low",
+                "provider": self.provider,
+            }
+        except LLMServiceError as error:
+            if accumulated:
+                logger.warning(
+                    "Streaming provider interrupted after partial response; returning collected content. detail=%s",
+                    error.data or {"detail": str(error)},
+                )
+                yield {
+                    "type": "complete",
+                    "content": self._normalize_chat_text("".join(accumulated)),
+                    "risk_level": "low",
+                    "provider": self.provider,
+                }
+                return
+
+            logger.warning(
+                "Streaming provider call failed, using fallback. detail=%s",
+                error.data or {"detail": str(error)},
+            )
+            yield from self._stream_fallback_chat_reply(fallback_context)
+        except Exception as error:  # noqa: BLE001
+            logger.warning(
+                "Unexpected streaming provider error, using fallback. detail=%s",
+                {"detail": str(error)},
+            )
+            yield from self._stream_fallback_chat_reply(fallback_context)
+
     def generate_report(self, messages, fallback_context):
         if not self._use_external_provider():
             return self._mock_report(fallback_context)
@@ -160,6 +211,73 @@ class LLMService:
                 data={"detail": str(error), "body": response.text[:500]},
             ) from error
 
+    def _stream_chat_completion(self, *, messages, temperature):
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = requests.post(
+                    self._chat_completions_url(),
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                        "Accept": "text/event-stream",
+                    },
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                    stream=True,
+                )
+                response.raise_for_status()
+                break
+            except requests.Timeout as error:
+                last_error = error
+                logger.warning(
+                    "Streaming LLM request timed out on attempt %s/%s for provider=%s model=%s",
+                    attempt + 1,
+                    self.max_retries + 1,
+                    self.provider,
+                    self.model,
+                )
+                if attempt >= self.max_retries:
+                    raise LLMServiceError(data={"detail": str(error)}) from error
+                time.sleep(1)
+            except requests.RequestException as error:
+                raise LLMServiceError(data={"detail": str(error)}) from error
+        else:
+            raise LLMServiceError(
+                data={"detail": str(last_error) if last_error else "Unknown request failure."}
+            )
+
+        try:
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if raw_line is None:
+                    continue
+
+                line = raw_line.strip()
+                if not line or not line.startswith("data:"):
+                    continue
+
+                data_str = line[5:].strip()
+                if data_str == "[DONE]":
+                    break
+
+                try:
+                    yield json.loads(data_str)
+                except json.JSONDecodeError as error:
+                    raise LLMServiceError(
+                        "Provider returned invalid streaming payload.",
+                        data={"detail": str(error), "body": data_str[:500]},
+                    ) from error
+        except requests.RequestException as error:
+            raise LLMServiceError(data={"detail": str(error)}) from error
+
     def _chat_completions_url(self):
         return f"{self.base_url}/chat/completions"
 
@@ -184,6 +302,26 @@ class LLMService:
 
         if isinstance(content, str):
             return content.strip()
+        return ""
+
+    def _extract_stream_message_delta(self, data):
+        try:
+            delta = data["choices"][0]["delta"]
+        except (KeyError, IndexError, TypeError):
+            return ""
+
+        content = delta.get("content", "")
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(item.get("text", ""))
+                elif isinstance(item, str):
+                    parts.append(item)
+            return "".join(parts)
+
+        if isinstance(content, str):
+            return content
         return ""
 
     def _safe_parse_json_object(self, content):
@@ -265,6 +403,19 @@ class LLMService:
             return [value.strip()]
 
         return default
+
+    def _stream_fallback_chat_reply(self, fallback_context):
+        fallback = self._mock_chat_reply(fallback_context)
+        for chunk in self._chunk_text_for_stream(fallback["content"]):
+            yield {"type": "delta", "content": chunk}
+        yield {"type": "complete", **fallback}
+
+    def _chunk_text_for_stream(self, text):
+        if not text:
+            return []
+
+        chunk_size = 24 if " " in text else 12
+        return [text[index : index + chunk_size] for index in range(0, len(text), chunk_size)]
 
     def _mock_chat_reply(self, fallback_context):
         latest_user_message = fallback_context.get("latest_user_message", "")

@@ -63,6 +63,75 @@ function request(options) {
   })
 }
 
+function streamRequest(options) {
+  const method = (options.method || 'GET').toUpperCase()
+  const url = `${env.baseURL}${options.url}`
+
+  console.info('[stream:start]', {
+    method,
+    url,
+    data: options.data || {}
+  })
+
+  const requestTask = wx.request({
+    url,
+    method,
+    timeout: env.timeout,
+    enableChunked: true,
+    responseType: 'arraybuffer',
+    data: options.data || {},
+    header: {
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+      ...(options.header || {})
+    },
+    success: (res) => {
+      console.info('[stream:success]', {
+        method,
+        url,
+        statusCode: res.statusCode
+      })
+      if (typeof options.success === 'function') {
+        options.success(res)
+      }
+    },
+    fail: (error) => {
+      console.error('[stream:fail]', {
+        method,
+        url,
+        error
+      })
+      if (typeof options.fail === 'function') {
+        options.fail({
+          message: normalizeErrorMessage(error),
+          code: 'NETWORK_ERROR',
+          raw: error
+        })
+      }
+    },
+    complete: (res) => {
+      if (typeof options.complete === 'function') {
+        options.complete(res)
+      }
+    }
+  })
+
+  if (requestTask && typeof requestTask.onChunkReceived === 'function' && typeof options.onChunkReceived === 'function') {
+    requestTask.onChunkReceived((chunk) => {
+      options.onChunkReceived(chunk)
+    })
+  }
+
+  if (requestTask && typeof requestTask.onHeadersReceived === 'function' && typeof options.onHeadersReceived === 'function') {
+    requestTask.onHeadersReceived((headers) => {
+      options.onHeadersReceived(headers)
+    })
+  }
+
+  return requestTask
+}
+
 module.exports = {
-  request
+  request,
+  streamRequest
 }

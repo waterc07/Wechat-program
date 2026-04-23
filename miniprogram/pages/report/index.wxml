@@ -1,14 +1,18 @@
 <view class="page">
-  <view class="header">
-    <view class="header-topbar">
-      <view>
-        <view class="header-title">{{t.reportHeaderTitle}}</view>
-        <view class="header-subtitle">{{t.reportHeaderSubtitle}}</view>
+  <view class="page-orbit orbit-one"></view>
+  <view class="page-orbit orbit-two"></view>
+
+  <view class="hero-panel panel-shell">
+    <view class="hero-topbar">
+      <view class="hero-copy">
+        <view class="section-kicker">{{locale === 'en-US' ? 'doctor brief' : '医生摘要'}}</view>
+        <view class="hero-title">{{t.reportHeaderTitle}}</view>
+        <view class="hero-subtitle">{{t.reportHeaderSubtitle}}</view>
       </view>
-      <view class="locale-switch">
+      <view class="pill-switch">
         <block wx:for="{{localeOptions}}" wx:key="code">
           <view
-            class="locale-pill {{locale === item.code ? 'locale-pill-active' : ''}}"
+            class="pill-switch-item {{locale === item.code ? 'pill-switch-item-active' : ''}}"
             data-locale="{{item.code}}"
             bindtap="switchLocale"
           >
@@ -17,49 +21,76 @@
         </block>
       </view>
     </view>
+
     <view class="action-row">
-      <button class="action-button" bindtap="backToChat">{{t.continueConsultation}}</button>
-      <button class="action-button" bindtap="startNewConsultation">{{t.startNewConsultation}}</button>
-      <button class="action-button action-primary" bindtap="regenerateReport" disabled="{{loading || regenerating}}">
+      <button class="ghost-button" bindtap="backToChat">{{t.continueConsultation}}</button>
+      <button class="ghost-button" bindtap="startNewConsultation">{{t.startNewConsultation}}</button>
+      <button class="primary-action-button" bindtap="regenerateReport" disabled="{{loading || regenerating}}">
         {{regenerating ? t.regeneratingReport : t.regenerateReport}}
       </button>
     </view>
   </view>
 
-  <view wx:if="{{loading}}" class="loading card">
-    <view class="muted">{{t.reportLoading}}</view>
+  <view wx:if="{{loading}}" class="loading-shell panel-shell">
+    <view class="loading-grid"></view>
+    <view class="surface-title">{{t.reportLoading}}</view>
+    <view class="surface-subtitle">
+      {{locale === 'en-US' ? 'The summary is being prepared in a structured format.' : '系统正在整理结构化摘要，请稍候。'}}
+    </view>
   </view>
 
   <view wx:elif="{{report}}" class="content">
-    <view class="report-card card">
-      <view class="field-label">{{t.fieldSymptoms}}</view>
+    <view class="overview-grid">
+      <view class="overview-card panel-shell">
+        <view class="overview-label">{{t.fieldUrgency}}</view>
+        <view class="overview-value urgency {{report.urgencyTone}}">{{report.urgency_level}}</view>
+      </view>
+      <view class="overview-card panel-shell">
+        <view class="overview-label">{{t.fieldDepartment}}</view>
+        <view class="overview-value">{{report.recommended_department}}</view>
+      </view>
+      <view class="overview-card panel-shell">
+        <view class="overview-label">{{t.fieldConditions}}</view>
+        <view class="overview-value">{{report.possible_conditions.length}}</view>
+      </view>
+    </view>
+
+    <view class="report-card panel-shell emphasis-card">
+      <view class="card-kicker">{{t.fieldSymptoms}}</view>
       <view class="field-value">{{report.symptoms_summary}}</view>
     </view>
 
-    <view class="report-card card">
-      <view class="field-label">{{t.fieldConditions}}</view>
-      <block wx:for="{{report.possible_conditions}}" wx:key="*this">
-        <view class="tag">{{item}}</view>
-      </block>
+    <view class="report-card panel-shell">
+      <view class="card-header">
+        <view class="surface-title">{{t.fieldConditions}}</view>
+        <view class="surface-subtitle">
+          {{locale === 'en-US' ? 'Potential directions inferred from the conversation.' : '根据问诊内容整理出的可能方向。'}}
+        </view>
+      </view>
+      <view class="tag-list">
+        <block wx:for="{{report.possible_conditions}}" wx:key="*this">
+          <view class="tag">{{item}}</view>
+        </block>
+      </view>
     </view>
 
-    <view class="report-card card">
-      <view class="field-label">{{t.fieldDepartment}}</view>
-      <view class="field-value">{{report.recommended_department}}</view>
-    </view>
-
-    <view class="report-card card">
-      <view class="field-label">{{t.fieldUrgency}}</view>
-      <view class="field-value urgency">{{report.urgency_level}}</view>
-    </view>
-
-    <view class="report-card card">
-      <view class="field-label">{{t.fieldAdvice}}</view>
+    <view class="report-card panel-shell">
+      <view class="card-header">
+        <view class="surface-title">{{t.fieldAdvice}}</view>
+        <view class="surface-subtitle">
+          {{locale === 'en-US' ? 'Suggested next steps before in-person care.' : '线下就诊前可补充和留意的重点信息。'}}
+        </view>
+      </view>
       <view class="field-value">{{report.next_step_advice}}</view>
     </view>
 
-    <view class="report-card card warning">
-      <view class="field-label">{{t.fieldDisclaimer}}</view>
+    <view class="report-card panel-shell warning-card">
+      <view class="card-header">
+        <view class="surface-title">{{t.fieldDisclaimer}}</view>
+        <view class="surface-subtitle">
+          {{locale === 'en-US' ? 'Safety boundary for using this generated summary.' : '使用该摘要时需要遵守的安全边界。'}}
+        </view>
+      </view>
       <view class="field-value">{{locale === 'en-US' ? disclaimer : (report.disclaimer || disclaimer)}}</view>
     </view>
   </view>

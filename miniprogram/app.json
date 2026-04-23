@@ -5,9 +5,9 @@
   ],
   "window": {
     "navigationBarTitleText": "预问诊助手",
-    "navigationBarBackgroundColor": "#0e7490",
+    "navigationBarBackgroundColor": "#10233a",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#f4f7fb",
+    "backgroundColor": "#f2f7fb",
     "backgroundTextStyle": "light"
   },
   "style": "v2",

@@ -1,4 +1,6 @@
-from flask import Blueprint, current_app
+import json
+
+from flask import Blueprint, Response, current_app, stream_with_context
 
 from ..constants import get_disclaimer, get_emergency_escalation_message
 from ..schemas.request_validators import get_json_payload, validate_chat_payload
@@ -14,6 +16,10 @@ chat_bp = Blueprint("chat", __name__, url_prefix="/api")
 consultation_service = ConsultationService()
 risk_service = RiskService()
 logger = get_logger(__name__)
+
+
+def _build_sse_event(event, data):
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @chat_bp.post("/chat")
@@ -92,4 +98,133 @@ def chat():
             "disclaimer": disclaimer,
         },
         message="Chat reply generated.",
+    )
+
+
+@chat_bp.post("/chat/stream")
+def chat_stream():
+    payload = validate_chat_payload(get_json_payload())
+    consultation, created = consultation_service.get_or_create_consultation(
+        payload["user_id"],
+        payload["consultation_id"],
+        chief_complaint=payload["message"],
+    )
+    user_message = consultation_service.add_message(
+        consultation,
+        "user",
+        payload["message"],
+        risk_level="low",
+    )
+    disclaimer = get_disclaimer(payload["locale"])
+
+    risk_result = risk_service.detect(payload["message"])
+
+    @stream_with_context
+    def generate():
+        yield _build_sse_event(
+            "meta",
+            {
+                "consultation_id": consultation.id,
+                "created": created,
+                "user_message_id": user_message.id,
+            },
+        )
+
+        if risk_result["risk_level"] == "high":
+            user_message.risk_level = "high"
+            consultation.risk_level = "high"
+            assistant_text = f"{get_emergency_escalation_message(payload['locale'])}\n\n{disclaimer}"
+            for chunk in llm_service._chunk_text_for_stream(assistant_text):
+                yield _build_sse_event("delta", {"delta": chunk})
+
+            assistant_message = consultation_service.add_message(
+                consultation,
+                "assistant",
+                assistant_text,
+                risk_level="high",
+            )
+            yield _build_sse_event(
+                "done",
+                {
+                    "consultation_id": consultation.id,
+                    "created": created,
+                    "assistant_message": assistant_message.to_dict(),
+                    "risk_level": "high",
+                    "matched_keyword": risk_result["matched_keyword"],
+                    "disclaimer": disclaimer,
+                },
+            )
+            return
+
+        history = [
+            item.to_dict()
+            for item in consultation.messages
+            if item.id != user_message.id and item.role in {"user", "assistant"}
+        ]
+        prompt_messages = build_chat_messages(history, payload["message"], payload["locale"])
+
+        final_reply = None
+        try:
+            for event in llm_service.stream_chat_reply(
+                prompt_messages,
+                {"latest_user_message": payload["message"], "locale": payload["locale"]},
+            ):
+                if event["type"] == "delta":
+                    yield _build_sse_event("delta", {"delta": event["content"]})
+                elif event["type"] == "complete":
+                    final_reply = event
+        except Exception as error:  # noqa: BLE001
+            logger.exception(
+                "Streaming chat failed unexpectedly. consultation_id=%s",
+                consultation.id,
+            )
+            yield _build_sse_event(
+                "error",
+                {
+                    "message": str(error) or "Streaming chat failed.",
+                    "consultation_id": consultation.id,
+                },
+            )
+            return
+
+        if not final_reply or not final_reply.get("content"):
+            logger.warning(
+                "Streaming chat completed without content. consultation_id=%s",
+                consultation.id,
+            )
+            yield _build_sse_event(
+                "error",
+                {
+                    "message": "Streaming chat completed without content.",
+                    "consultation_id": consultation.id,
+                },
+            )
+            return
+
+        assistant_message = consultation_service.add_message(
+            consultation,
+            "assistant",
+            f"{final_reply['content']}\n\n{disclaimer}",
+            risk_level=final_reply["risk_level"],
+        )
+
+        yield _build_sse_event(
+            "done",
+            {
+                "consultation_id": consultation.id,
+                "created": created,
+                "assistant_message": assistant_message.to_dict(),
+                "risk_level": final_reply["risk_level"],
+                "disclaimer": disclaimer,
+            },
+        )
+
+    llm_service = LLMService(current_app.config)
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

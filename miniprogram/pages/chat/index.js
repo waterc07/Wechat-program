@@ -46,6 +46,10 @@ Page({
     }
   },
 
+  onUnload() {
+    this.abortActiveStream()
+  },
+
   applyLocale(locale) {
     const t = getTranslations(locale)
     wx.setNavigationBarTitle({
@@ -111,6 +115,232 @@ Page({
     })
   },
 
+  startChatStream({ userId, consultationId, message, t, previousMessages, previousScrollIntoView }) {
+    this.resetStreamRuntimeState()
+
+    this.activeStreamTask = api.chatStream(
+      {
+        user_id: userId,
+        consultation_id: consultationId,
+        message,
+        locale: this.data.locale
+      },
+      {
+        onChunkReceived: (chunk) => {
+          this.handleStreamChunk(chunk)
+        },
+        success: () => {
+          this.flushStreamDecoder()
+          const donePayload = this.streamFinalPayload
+          const streamError = this.streamErrorMessage
+
+          if (streamError) {
+            this.rollbackStreamState(message, previousMessages, previousScrollIntoView, streamError)
+            return
+          }
+
+          if (!donePayload || !donePayload.consultation_id) {
+            this.rollbackStreamState(
+              message,
+              previousMessages,
+              previousScrollIntoView,
+              t.sendFailed
+            )
+            return
+          }
+
+          this.setData({
+            consultationId: donePayload.consultation_id
+          })
+          this.refreshMessages(donePayload.consultation_id)
+        },
+        fail: (error) => {
+          this.rollbackStreamState(
+            message,
+            previousMessages,
+            previousScrollIntoView,
+            error.message || t.sendFailed
+          )
+        },
+        complete: () => {
+          this.activeStreamTask = null
+          this.setData({ loading: false })
+        }
+      }
+    )
+  },
+
+  resetStreamRuntimeState() {
+    this.streamBuffer = ''
+    this.streamFinalPayload = null
+    this.streamErrorMessage = ''
+    this.streamTextDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
+  },
+
+  abortActiveStream() {
+    if (this.activeStreamTask && typeof this.activeStreamTask.abort === 'function') {
+      this.activeStreamTask.abort()
+    }
+    this.activeStreamTask = null
+  },
+
+  flushStreamDecoder() {
+    if (!this.streamTextDecoder) {
+      return
+    }
+
+    const tail = this.streamTextDecoder.decode()
+    if (tail) {
+      this.consumeStreamText(tail)
+    }
+  },
+
+  handleStreamChunk(chunk) {
+    const text = this.decodeChunkBuffer(chunk && chunk.data)
+    if (!text) {
+      return
+    }
+    this.consumeStreamText(text)
+  },
+
+  decodeChunkBuffer(buffer) {
+    if (!buffer) {
+      return ''
+    }
+
+    if (this.streamTextDecoder) {
+      return this.streamTextDecoder.decode(buffer, { stream: true })
+    }
+
+    try {
+      const bytes = new Uint8Array(buffer)
+      let encoded = ''
+      bytes.forEach((byte) => {
+        encoded += `%${byte.toString(16).padStart(2, '0')}`
+      })
+      return decodeURIComponent(encoded)
+    } catch (error) {
+      const bytes = new Uint8Array(buffer)
+      return String.fromCharCode.apply(null, bytes)
+    }
+  },
+
+  consumeStreamText(text) {
+    this.streamBuffer = `${this.streamBuffer || ''}${text.replace(/\r\n/g, '\n')}`
+    const blocks = this.streamBuffer.split('\n\n')
+    this.streamBuffer = blocks.pop() || ''
+
+    blocks.forEach((block) => {
+      this.processStreamBlock(block)
+    })
+  },
+
+  processStreamBlock(block) {
+    if (!block) {
+      return
+    }
+
+    let eventName = 'message'
+    const dataLines = []
+    block.split('\n').forEach((line) => {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim()
+        return
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trimStart())
+      }
+    })
+
+    if (!dataLines.length) {
+      return
+    }
+
+    let payload = null
+    try {
+      payload = JSON.parse(dataLines.join('\n'))
+    } catch (error) {
+      return
+    }
+
+    if (eventName === 'meta') {
+      if (payload.consultation_id) {
+        this.setData({ consultationId: payload.consultation_id })
+      }
+      return
+    }
+
+    if (eventName === 'delta') {
+      this.appendAssistantDelta(payload.delta || '')
+      return
+    }
+
+    if (eventName === 'done') {
+      this.streamFinalPayload = payload
+      if (payload.assistant_message && payload.assistant_message.content) {
+        this.replacePendingAssistantContent(payload.assistant_message.content)
+      }
+      return
+    }
+
+    if (eventName === 'error') {
+      this.streamErrorMessage = payload.message || this.data.t.sendFailed
+    }
+  },
+
+  appendAssistantDelta(delta) {
+    if (!delta) {
+      return
+    }
+
+    const messages = this.data.messages.slice()
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const item = messages[index]
+      if (item.role === 'assistant' && item.pending) {
+        messages[index] = {
+          ...item,
+          content: `${item.content || ''}${delta}`
+        }
+        this.setData({
+          messages,
+          scrollIntoView: item.viewId
+        })
+        return
+      }
+    }
+  },
+
+  replacePendingAssistantContent(content) {
+    const messages = this.data.messages.slice()
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const item = messages[index]
+      if (item.role === 'assistant' && item.pending) {
+        messages[index] = {
+          ...item,
+          content
+        }
+        this.setData({
+          messages,
+          scrollIntoView: item.viewId
+        })
+        return
+      }
+    }
+  },
+
+  rollbackStreamState(message, previousMessages, previousScrollIntoView, errorMessage) {
+    this.abortActiveStream()
+    this.setData({
+      inputMessage: message,
+      messages: previousMessages,
+      scrollIntoView: previousScrollIntoView
+    })
+    wx.showToast({
+      title: errorMessage || this.data.t.sendFailed,
+      icon: 'none'
+    })
+  },
+
   sendMessage() {
     const { inputMessage, consultationId, userId, loading, t } = this.data
     const message = inputMessage.trim()
@@ -149,7 +379,7 @@ Page({
       this.buildOptimisticMessage({
         id: `temp-assistant-${timestamp}`,
         role: 'assistant',
-        content: t.thinking,
+        content: '',
         timestamp,
         pending: true,
         statusKey: 'thinking',
@@ -164,33 +394,14 @@ Page({
       scrollIntoView: `msg-temp-assistant-${timestamp}`
     })
 
-    api
-      .chat({
-        user_id: userId,
-        consultation_id: consultationId,
-        message,
-        locale: this.data.locale
-      })
-      .then((data) => {
-        this.setData({
-          consultationId: data.consultation_id
-        })
-        return this.refreshMessages(data.consultation_id)
-      })
-      .catch((error) => {
-        this.setData({
-          inputMessage: message,
-          messages: previousMessages,
-          scrollIntoView: previousScrollIntoView
-        })
-        wx.showToast({
-          title: error.message || t.sendFailed,
-          icon: 'none'
-        })
-      })
-      .finally(() => {
-        this.setData({ loading: false })
-      })
+    this.startChatStream({
+      userId,
+      consultationId,
+      message,
+      t,
+      previousMessages,
+      previousScrollIntoView
+    })
   },
 
   refreshMessages(consultationId) {

@@ -71,7 +71,7 @@ Page({
       .getReport(consultationId)
       .then((data) => {
         this.setData({
-          report: data.report
+          report: this.decorateReport(data.report)
         })
       })
       .catch((error) => {
@@ -96,7 +96,7 @@ Page({
       .generateReport({ consultation_id: consultationId, locale: this.data.locale })
       .then((data) => {
         this.setData({
-          report: data.report
+          report: this.decorateReport(data.report)
         })
         wx.showToast({
           title: t.reportGenerated,
@@ -130,5 +130,28 @@ Page({
     wx.reLaunch({
       url: '/pages/chat/index?reset=1'
     })
+  },
+
+  decorateReport(report) {
+    if (!report) {
+      return null
+    }
+
+    const urgency = String(report.urgency_level || '').toLowerCase()
+    let urgencyTone = 'urgency-medium'
+
+    if (urgency.includes('low')) {
+      urgencyTone = 'urgency-low'
+    } else if (urgency.includes('high')) {
+      urgencyTone = 'urgency-high'
+    }
+
+    return {
+      ...report,
+      urgencyTone,
+      possible_conditions: Array.isArray(report.possible_conditions)
+        ? report.possible_conditions
+        : []
+    }
   }
 })

@@ -1,14 +1,18 @@
 <view class="page">
-  <view class="hero">
+  <view class="page-orbit orbit-one"></view>
+  <view class="page-orbit orbit-two"></view>
+
+  <view class="hero-panel panel-shell">
     <view class="hero-topbar">
       <view class="hero-copy">
+        <view class="section-kicker">{{locale === 'en-US' ? 'smart intake' : '智能预问诊'}}</view>
         <view class="hero-title">{{t.heroTitle}}</view>
         <view class="hero-subtitle">{{t.heroSubtitle}}</view>
       </view>
-      <view class="locale-switch">
+      <view class="pill-switch">
         <block wx:for="{{localeOptions}}" wx:key="code">
           <view
-            class="locale-pill {{locale === item.code ? 'locale-pill-active' : ''}}"
+            class="pill-switch-item {{locale === item.code ? 'pill-switch-item-active' : ''}}"
             data-locale="{{item.code}}"
             bindtap="switchLocale"
           >
@@ -17,70 +21,117 @@
         </block>
       </view>
     </view>
-  </view>
 
-  <view class="disclaimer card">
-    <view class="disclaimer-label">{{t.disclaimerTitle}}</view>
-    <view class="disclaimer-text">{{disclaimer}}</view>
-  </view>
-
-  <view class="utility-row">
-    <view class="endpoint-tip">
-      <view class="endpoint-label">{{t.currentEndpoint}}</view>
-      <view class="endpoint-value">{{baseURLDisplay}}</view>
-    </view>
-    <button class="new-session-button" bindtap="promptResetConversation">
-      {{t.startNewConsultation}}
-    </button>
-  </view>
-
-  <scroll-view scroll-y class="messages card" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
-    <block wx:if="{{messages.length}}">
-      <block wx:for="{{messages}}" wx:key="id">
-        <view
-          id="{{item.viewId}}"
-          class="message-row {{item.role === 'assistant' ? 'assistant-row' : 'user-row'}}"
-        >
-          <view class="message-role">{{item.role === 'assistant' ? t.assistantRole : t.patientRole}}</view>
-          <view
-            class="message-bubble {{item.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'}} {{item.pending ? 'pending-bubble' : ''}}"
-          >
-            <block wx:if="{{item.pending}}">
-              <view class="thinking-row">
-                <text>{{item.content}}</text>
-                <view class="thinking-dots">
-                  <text class="thinking-dot dot-1">•</text>
-                  <text class="thinking-dot dot-2">•</text>
-                  <text class="thinking-dot dot-3">•</text>
-                </view>
-              </view>
-            </block>
-            <text wx:else>{{item.content}}</text>
-          </view>
-          <view class="message-meta {{item.role === 'assistant' ? 'assistant-meta' : 'user-meta'}}">
-            <text wx:if="{{item.displayTime}}">{{item.displayTime}}</text>
-            <text wx:if="{{item.statusText}}"> · {{item.statusText}}</text>
-          </view>
+    <view class="hero-metrics">
+      <view class="metric-card">
+        <view class="metric-label">{{locale === 'en-US' ? 'Conversation' : '当前会话'}}</view>
+        <view class="metric-value">
+          {{consultationId ? (locale === 'en-US' ? 'Active' : '进行中') : (locale === 'en-US' ? 'Not started' : '未开始')}}
         </view>
-      </block>
-    </block>
-    <view wx:else class="empty-state">
-      <view class="section-title">{{t.emptyTitle}}</view>
-      <view class="muted">{{t.emptyHint}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-label">{{locale === 'en-US' ? 'Messages' : '消息数量'}}</view>
+        <view class="metric-value">{{messages.length}}</view>
+      </view>
+      <view class="metric-card metric-card-wide">
+        <view class="metric-label">{{t.currentEndpoint}}</view>
+        <view class="metric-endpoint">{{baseURLDisplay}}</view>
+      </view>
     </view>
-  </scroll-view>
+  </view>
 
-  <view class="composer card">
-    <textarea
-      class="composer-input"
-      maxlength="2000"
-      placeholder="{{t.inputPlaceholder}}"
-      value="{{inputMessage}}"
-      bindinput="onInputChange"
-    />
+  <view class="notice-panel panel-shell">
+    <view class="notice-header">
+      <view class="notice-dot"></view>
+      <view class="notice-title">{{t.disclaimerTitle}}</view>
+    </view>
+    <view class="notice-text">{{disclaimer}}</view>
+  </view>
+
+  <view class="message-panel panel-shell">
+    <view class="panel-toolbar">
+      <view>
+        <view class="surface-title">{{locale === 'en-US' ? 'Conversation feed' : '对话内容'}}</view>
+        <view class="surface-subtitle">
+          {{locale === 'en-US' ? 'Real-time pre-visit symptom collection and AI guidance.' : '实时记录症状描述与问诊辅助回复。'}}
+        </view>
+      </view>
+      <button class="ghost-button" bindtap="promptResetConversation">
+        {{t.startNewConsultation}}
+      </button>
+    </view>
+
+    <scroll-view scroll-y class="messages" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
+      <block wx:if="{{messages.length}}">
+        <block wx:for="{{messages}}" wx:key="id">
+          <view
+            id="{{item.viewId}}"
+            class="message-row {{item.role === 'assistant' ? 'assistant-row' : 'user-row'}}"
+          >
+            <view class="message-meta-row {{item.role === 'assistant' ? 'assistant-meta-row' : 'user-meta-row'}}">
+              <view class="message-role-chip">
+                {{item.role === 'assistant' ? t.assistantRole : t.patientRole}}
+              </view>
+              <view class="message-time">{{item.displayTime}}</view>
+            </view>
+
+            <view
+              class="message-bubble {{item.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'}} {{item.pending ? 'pending-bubble' : ''}}"
+            >
+              <block wx:if="{{item.pending}}">
+                <view class="thinking-row">
+                  <text>{{item.content || t.thinking}}</text>
+                  <view class="thinking-dots">
+                    <view class="thinking-dot dot-1"></view>
+                    <view class="thinking-dot dot-2"></view>
+                    <view class="thinking-dot dot-3"></view>
+                  </view>
+                </view>
+              </block>
+              <text wx:else>{{item.content}}</text>
+            </view>
+
+            <view wx:if="{{item.statusText}}" class="message-status {{item.role === 'assistant' ? 'assistant-status' : 'user-status'}}">
+              {{item.statusText}}
+            </view>
+          </view>
+        </block>
+      </block>
+
+      <view wx:else class="empty-state">
+        <view class="empty-grid"></view>
+        <view class="section-title">{{t.emptyTitle}}</view>
+        <view class="muted empty-hint">{{t.emptyHint}}</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="composer panel-shell">
+    <view class="composer-header">
+      <view>
+        <view class="surface-title">{{locale === 'en-US' ? 'Input symptoms' : '录入症状'}}</view>
+        <view class="surface-subtitle">
+          {{locale === 'en-US' ? 'Include duration, severity, and related symptoms for a better summary.' : '补充持续时间、严重程度和伴随症状，摘要会更准确。'}}
+        </view>
+      </view>
+      <view class="soft-chip">
+        {{loading ? t.statusThinking : (consultationId ? (locale === 'en-US' ? 'Ready' : '已就绪') : (locale === 'en-US' ? 'Standby' : '待输入'))}}
+      </view>
+    </view>
+
+    <view class="composer-field">
+      <textarea
+        class="composer-input"
+        maxlength="2000"
+        placeholder="{{t.inputPlaceholder}}"
+        value="{{inputMessage}}"
+        bindinput="onInputChange"
+      />
+    </view>
+
     <view class="composer-actions">
       <button
-        class="secondary-button"
+        class="outline-button"
         bindtap="generateReport"
         loading="{{reportLoading}}"
         disabled="{{!consultationId}}"
