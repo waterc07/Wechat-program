@@ -115,53 +115,57 @@ def chat_stream():
         payload["message"],
         risk_level="low",
     )
+    consultation_id = consultation.id
+    user_message_id = user_message.id
     disclaimer = get_disclaimer(payload["locale"])
-
     risk_result = risk_service.detect(payload["message"])
+    llm_service = LLMService(current_app.config)
+
+    if risk_result["risk_level"] == "high":
+        consultation_for_save = consultation_service.get_consultation(consultation_id)
+        assistant_text = f"{get_emergency_escalation_message(payload['locale'])}\n\n{disclaimer}"
+        assistant_message = consultation_service.add_message(
+            consultation_for_save,
+            "assistant",
+            assistant_text,
+            risk_level="high",
+        )
+        assistant_message_payload = assistant_message.to_dict()
+    else:
+        history = [
+            item.to_dict()
+            for item in consultation.messages
+            if item.id != user_message_id and item.role in {"user", "assistant"}
+        ]
+        prompt_messages = build_chat_messages(history, payload["message"], payload["locale"])
 
     @stream_with_context
     def generate():
         yield _build_sse_event(
             "meta",
             {
-                "consultation_id": consultation.id,
+                "consultation_id": consultation_id,
                 "created": created,
-                "user_message_id": user_message.id,
+                "user_message_id": user_message_id,
             },
         )
 
         if risk_result["risk_level"] == "high":
-            user_message.risk_level = "high"
-            consultation.risk_level = "high"
-            assistant_text = f"{get_emergency_escalation_message(payload['locale'])}\n\n{disclaimer}"
             for chunk in llm_service._chunk_text_for_stream(assistant_text):
                 yield _build_sse_event("delta", {"delta": chunk})
 
-            assistant_message = consultation_service.add_message(
-                consultation,
-                "assistant",
-                assistant_text,
-                risk_level="high",
-            )
             yield _build_sse_event(
                 "done",
                 {
-                    "consultation_id": consultation.id,
+                    "consultation_id": consultation_id,
                     "created": created,
-                    "assistant_message": assistant_message.to_dict(),
+                    "assistant_message": assistant_message_payload,
                     "risk_level": "high",
                     "matched_keyword": risk_result["matched_keyword"],
                     "disclaimer": disclaimer,
                 },
             )
             return
-
-        history = [
-            item.to_dict()
-            for item in consultation.messages
-            if item.id != user_message.id and item.role in {"user", "assistant"}
-        ]
-        prompt_messages = build_chat_messages(history, payload["message"], payload["locale"])
 
         final_reply = None
         try:
@@ -176,13 +180,13 @@ def chat_stream():
         except Exception as error:  # noqa: BLE001
             logger.exception(
                 "Streaming chat failed unexpectedly. consultation_id=%s",
-                consultation.id,
+                consultation_id,
             )
             yield _build_sse_event(
                 "error",
                 {
                     "message": str(error) or "Streaming chat failed.",
-                    "consultation_id": consultation.id,
+                    "consultation_id": consultation_id,
                 },
             )
             return
@@ -190,19 +194,20 @@ def chat_stream():
         if not final_reply or not final_reply.get("content"):
             logger.warning(
                 "Streaming chat completed without content. consultation_id=%s",
-                consultation.id,
+                consultation_id,
             )
             yield _build_sse_event(
                 "error",
                 {
                     "message": "Streaming chat completed without content.",
-                    "consultation_id": consultation.id,
+                    "consultation_id": consultation_id,
                 },
             )
             return
 
+        consultation_for_save = consultation_service.get_consultation(consultation_id)
         assistant_message = consultation_service.add_message(
-            consultation,
+            consultation_for_save,
             "assistant",
             f"{final_reply['content']}\n\n{disclaimer}",
             risk_level=final_reply["risk_level"],
@@ -211,7 +216,7 @@ def chat_stream():
         yield _build_sse_event(
             "done",
             {
-                "consultation_id": consultation.id,
+                "consultation_id": consultation_id,
                 "created": created,
                 "assistant_message": assistant_message.to_dict(),
                 "risk_level": final_reply["risk_level"],
@@ -219,7 +224,6 @@ def chat_stream():
             },
         )
 
-    llm_service = LLMService(current_app.config)
     return Response(
         generate(),
         mimetype="text/event-stream",
