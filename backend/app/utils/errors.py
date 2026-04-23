@@ -1,3 +1,4 @@
+from sqlalchemy.exc import OperationalError
 from werkzeug.exceptions import HTTPException
 
 from .logging import get_logger
@@ -37,6 +38,7 @@ class ServiceError(AppError):
 
 def register_error_handlers(app):
     from ..schemas.response import error_response
+    from ..extensions import db
 
     @app.errorhandler(AppError)
     def handle_app_error(error):
@@ -53,6 +55,20 @@ def register_error_handlers(app):
             error.description,
             code=error.name.upper().replace(" ", "_"),
             status=error.code or 500,
+        )
+
+    @app.errorhandler(OperationalError)
+    def handle_operational_error(error):
+        logger.exception("Database operational error: %s", error)
+        try:
+            db.session.remove()
+            db.engine.dispose()
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to reset database engine after operational error.")
+        return error_response(
+            "Database connection is temporarily unavailable.",
+            code="DATABASE_UNAVAILABLE",
+            status=503,
         )
 
     @app.errorhandler(Exception)

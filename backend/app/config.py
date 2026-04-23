@@ -18,6 +18,10 @@ class Config:
         f"sqlite:///{(BASE_DIR / 'pre_diagnosis.db').as_posix()}",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": os.getenv("DB_POOL_PRE_PING", "true").lower() == "true",
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE_SECONDS", "1800")),
+    }
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock")
     LLM_BASE_URL = os.getenv(
