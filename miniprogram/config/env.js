@@ -1,6 +1,6 @@
 const env = {
   transport: 'cloud-container',
-  cloudEnv: 'cloud1-d3gjvi0owd7bc5ca9',
+  cloudEnv: 'prod-01',
   cloudService: 'pre-diagnosis-backend',
   cloudResourceAppid: '',
   cloudResourceEnv: '',
