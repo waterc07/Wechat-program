@@ -3,7 +3,28 @@ const env = require('./config/env')
 const { getStoredLocale, getTranslations } = require('./utils/i18n')
 
 function getAuthCacheKey() {
+  if (env.transport === 'cloud-container') {
+    return `authState:cloud:${env.cloudEnv}:${env.cloudService}`
+  }
   return `authState:${env.baseURL}`
+}
+
+function initCloudContainer() {
+  if (env.transport !== 'cloud-container') {
+    return
+  }
+
+  if (!wx.cloud || typeof wx.cloud.init !== 'function') {
+    console.warn('[cloud:init] wx.cloud is unavailable in current runtime')
+    return
+  }
+
+  const config = {
+    env: env.cloudEnv,
+    traceUser: true
+  }
+
+  wx.cloud.init(config)
 }
 
 App({
@@ -15,6 +36,8 @@ App({
   },
 
   onLaunch() {
+    initCloudContainer()
+
     const cachedAuth = wx.getStorageSync(getAuthCacheKey())
     if (cachedAuth && cachedAuth.userId) {
       this.globalData.userId = cachedAuth.userId
@@ -41,7 +64,10 @@ App({
               wx.setStorageSync(getAuthCacheKey(), {
                 userId: data.user.id,
                 userInfo: data.user,
-                baseURL: env.baseURL
+                baseURL: env.baseURL,
+                transport: env.transport,
+                cloudEnv: env.cloudEnv,
+                cloudService: env.cloudService
               })
               wx.removeStorageSync('userId')
               resolve(data.user)

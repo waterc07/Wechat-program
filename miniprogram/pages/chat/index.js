@@ -1,5 +1,6 @@
 const api = require('../../utils/api')
 const env = require('../../config/env')
+const { getEndpointDisplay } = require('../../utils/request')
 const {
   LOCALE_OPTIONS,
   formatTime,
@@ -32,7 +33,7 @@ Page({
     const locale = getApp().globalData.locale || getStoredLocale()
     this.applyLocale(locale)
     this.setData({
-      baseURLDisplay: this.getBaseURLDisplay(env.baseURL)
+      baseURLDisplay: this.getBaseURLDisplay(getEndpointDisplay())
     })
 
     if (options && options.reset === '1') {
@@ -63,7 +64,7 @@ Page({
       locale,
       t,
       disclaimer: t.patientDisclaimer,
-      baseURLDisplay: this.getBaseURLDisplay(this.data.baseURL),
+      baseURLDisplay: this.getBaseURLDisplay(getEndpointDisplay()),
       messages: this.relabelMessages(this.data.messages, t),
       historyItems: this.normalizeConsultations(this.data.historyItems)
     })
