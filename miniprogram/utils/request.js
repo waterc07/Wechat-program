@@ -85,7 +85,8 @@ function buildCloudCallOptions(options) {
     method: (options.method || 'GET').toUpperCase(),
     header,
     data: options.data || {},
-    dataType: options.dataType
+    dataType: options.dataType,
+    timeout: Math.min(env.timeout || 15000, 15000)
   }
 
   if (!isResourceCloudTransport()) {
