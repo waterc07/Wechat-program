@@ -21,6 +21,9 @@ function getEndpointDisplay() {
 
 function normalizeErrorMessage(error) {
   const rawMessage = error && error.errMsg ? error.errMsg : error && error.message ? error.message : ''
+  if (rawMessage.includes('INVALID_HOST') || rawMessage.includes('-501000')) {
+    return `云托管主机无效，请核对环境 ${env.cloudEnv || '(默认)'} 和服务 ${env.cloudService}`
+  }
   if (rawMessage.includes('request:fail')) {
     return '网络请求失败，请检查云托管服务、小程序环境关联和云开发初始化配置。'
   }

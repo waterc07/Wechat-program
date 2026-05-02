@@ -53,9 +53,18 @@ App({
         success: (loginRes) => {
           const locale = this.globalData.locale || getStoredLocale()
           const t = getTranslations(locale)
+          if (!loginRes.code) {
+            wx.showToast({
+              title: t.wxLoginFailed,
+              icon: 'none'
+            })
+            reject(new Error('wx.login did not return a code'))
+            return
+          }
+
           api
             .wxLogin({
-              code: loginRes.code || 'mock-code',
+              code: loginRes.code,
               nickname: t.mockNickname
             })
             .then((data) => {

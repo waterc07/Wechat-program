@@ -31,3 +31,17 @@ def test_wx_login_falls_back_to_mock_openid_for_local_http(client):
     assert data["is_mock_login"] is True
     assert data["wechat_appid"] is None
     assert data["user"]["wx_openid"] == "local-openid-001"
+
+
+def test_wx_login_rejects_missing_cloud_openid_in_production(client):
+    client.application.config["FLASK_ENV"] = "production"
+
+    response = client.post(
+        "/api/auth/wx-login",
+        json={"code": "dev-code", "nickname": "Production User"},
+    )
+
+    assert response.status_code == 401
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert payload["code"] == "WECHAT_OPENID_REQUIRED"

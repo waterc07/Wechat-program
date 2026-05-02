@@ -73,6 +73,13 @@ def validate_runtime_config(app):
         if database_url.startswith("sqlite"):
             raise RuntimeError("SQLite must not be used in production. Set DATABASE_URL to a managed MySQL-compatible database.")
 
+        llm_provider = (app.config.get("LLM_PROVIDER") or "").lower()
+        if llm_provider == "mock":
+            raise RuntimeError("LLM_PROVIDER must not be mock in production.")
+
+        if llm_provider == "qwen" and not app.config.get("LLM_API_KEY"):
+            raise RuntimeError("LLM_API_KEY is required when LLM_PROVIDER=qwen in production.")
+
         if app.config.get("WECHAT_USE_REAL_AUTH") and (
             not app.config.get("WECHAT_APPID") or not app.config.get("WECHAT_APPSECRET")
         ):
