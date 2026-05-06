@@ -1,7 +1,7 @@
-from sqlalchemy.orm import selectinload
+from sqlalchemy import func
 
 from ..extensions import db
-from ..models import Consultation, Message, User
+from ..models import Consultation, Message, Report, User
 from ..utils.errors import NotFoundError
 
 
@@ -69,18 +69,21 @@ class ConsultationService:
         self.get_user(user_id)
 
         consultations = (
-            Consultation.query.options(
-                selectinload(Consultation.messages),
-                selectinload(Consultation.reports),
-            )
-            .filter_by(user_id=user_id)
+            Consultation.query.filter_by(user_id=user_id)
             .order_by(Consultation.created_at.desc())
             .all()
         )
+        if not consultations:
+            return []
+
+        consultation_ids = [consultation.id for consultation in consultations]
+        message_counts = self._count_by_consultation(Message, consultation_ids)
+        report_counts = self._count_by_consultation(Report, consultation_ids)
+        latest_messages = self._latest_messages_by_consultation(consultation_ids)
 
         items = []
         for consultation in consultations:
-            last_message = consultation.messages[-1] if consultation.messages else None
+            last_message = latest_messages.get(consultation.id)
             last_message_at = (
                 last_message.created_at.isoformat()
                 if last_message is not None
@@ -94,8 +97,8 @@ class ConsultationService:
             items.append(
                 {
                     **consultation.to_dict(),
-                    "message_count": len(consultation.messages),
-                    "report_count": len(consultation.reports),
+                    "message_count": message_counts.get(consultation.id, 0),
+                    "report_count": report_counts.get(consultation.id, 0),
                     "last_message_at": last_message_at,
                     "last_message_preview": last_message_preview,
                     "latest_message_role": last_message.role if last_message is not None else "",
@@ -104,3 +107,35 @@ class ConsultationService:
 
         items.sort(key=lambda item: item["last_message_at"], reverse=True)
         return items
+
+    def _count_by_consultation(self, model, consultation_ids):
+        return {
+            consultation_id: count
+            for consultation_id, count in db.session.query(
+                model.consultation_id,
+                func.count(model.id),
+            )
+            .filter(model.consultation_id.in_(consultation_ids))
+            .group_by(model.consultation_id)
+            .all()
+        }
+
+    def _latest_messages_by_consultation(self, consultation_ids):
+        latest_message_ids = (
+            db.session.query(
+                Message.consultation_id,
+                func.max(Message.id).label("message_id"),
+            )
+            .filter(Message.consultation_id.in_(consultation_ids))
+            .group_by(Message.consultation_id)
+            .subquery()
+        )
+
+        messages = (
+            Message.query.join(
+                latest_message_ids,
+                Message.id == latest_message_ids.c.message_id,
+            )
+            .all()
+        )
+        return {message.consultation_id: message for message in messages}
