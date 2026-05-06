@@ -159,10 +159,23 @@ function buildSseEvent(event, data) {
   return `event: ${event}\ndata: ${JSON.stringify(data || {})}\n\n`
 }
 
+function parseJsonStringPayload(payload) {
+  if (typeof payload !== 'string') {
+    return payload
+  }
+
+  try {
+    return JSON.parse(payload)
+  } catch (error) {
+    return payload
+  }
+}
+
 function buildChatSseFromCloudPayload(payload) {
-  const data = payload && payload.data ? payload.data : null
+  const parsedPayload = parseJsonStringPayload(payload)
+  const data = parsedPayload && parsedPayload.data ? parsedPayload.data : null
   const assistantMessage = data && data.assistant_message ? data.assistant_message : null
-  if (!payload || !payload.success || !data || !assistantMessage) {
+  if (!parsedPayload || !parsedPayload.success || !data || !assistantMessage) {
     return ''
   }
 
