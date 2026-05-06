@@ -1,51 +1,57 @@
-# 医疗预问诊小程序 MVP / Medical Pre-visit Mini Program MVP
+# 医疗预问诊微信小程序 MVP
 
-## 中文说明
+这是一个可本地运行、可部署到微信云托管的医疗预问诊 MVP。项目包含原生微信小程序前端、Flask 后端、SQLite/MySQL 数据存储、Qwen/百炼兼容模型调用，以及面向患者侧的安全免责声明和高风险症状本地拦截。
 
-### 项目简介
+> 本项目用于就诊前信息整理，不提供最终诊断，也不能替代医生面诊。
 
-这是一个可本地运行、可演示的端到端 MVP：
+## 当前能力
+
+- 微信小程序聊天式问诊，支持中文和英文界面切换。
+- 后端保存用户、问诊、消息、结构化报告。
+- 支持历史问诊列表、继续问诊、重新生成报告、开始新问诊。
+- 普通消息可通过 Qwen/百炼 OpenAI 兼容接口生成回复。
+- 高风险症状命中本地规则时优先返回就医提醒，不调用模型。
+- 聊天支持普通请求和 SSE 流式接口；云托管模式下会用普通云容器返回模拟流式片段。
+- 前端请求支持 `wx.request` 和 `wx.cloud.callContainer` 两种传输模式。
+- 网络请求带可恢复错误重试；聊天 POST 会带 `client_request_id`，后端可复用重复请求的既有回复，避免重复写入。
+- 生产环境启动时会校验 `SECRET_KEY`、数据库、LLM Provider 和微信云 OpenID 来源。
+
+## 技术栈
 
 - 前端：原生微信小程序
 - 后端：Python Flask
-- 数据库：SQLite 默认，本地零配置启动；生产可切换到 MySQL 兼容连接串
-- AI：通过 `LLMService` 抽象外部模型提供方，当前支持 `mock` 和阿里云百炼 Bailian 的 OpenAI 兼容模式
-- 部署目标：本地验证后可迁移到微信云托管
+- ORM：Flask-SQLAlchemy
+- 数据库：本地默认 SQLite，生产建议 MySQL 兼容数据库
+- 模型：`mock` 或 Qwen/百炼 OpenAI 兼容接口
+- 部署：本地运行或微信云托管 Docker 部署
 
-### 当前已完成能力
-
-- 患者通过聊天界面输入症状
-- 后端保存用户、问诊、消息、报告
-- 紧急关键词命中时优先走本地高风险拦截，不调用模型
-- 普通场景可调用 Qwen 生成预问诊辅助回复
-- 可根据会话生成结构化预问诊报告
-- 所有患者侧输出均包含免责声明，不作为最终诊断
-- 小程序支持中英文界面切换
-- 小程序切换语言后，后端聊天回复、报告内容、免责声明也会同步切换语言
-- 聊天页支持“发送后即时落消息 + AI 思考中占位 + 失败回滚”
-- 报告页支持“返回继续问诊 / 重新生成报告 / 开始新问诊”
-
-### 目录结构
+## 目录结构
 
 ```text
 .
-├─ backend/                 # Flask 后端
-├─ miniprogram/             # 微信小程序前端
+├─ backend/
+│  ├─ app/
+│  │  ├─ models/              # User / Consultation / Message / Report
+│  │  ├─ routes/              # auth / chat / consultations / report / health
+│  │  ├─ schemas/             # 请求校验和统一响应
+│  │  ├─ services/            # 业务逻辑、LLM、报告、风险判断
+│  │  └─ utils/
+│  ├─ tests/
+│  ├─ run.py                  # 本地启动入口
+│  └─ wsgi.py                 # gunicorn / 云托管入口
+├─ miniprogram/
+│  ├─ config/env.js           # 小程序传输和云托管配置
+│  ├─ pages/chat/             # 聊天和历史问诊
+│  ├─ pages/report/           # 报告页
+│  └─ utils/                  # api / request / i18n / disclaimer
+├─ Dockerfile
 ├─ requirements.txt
 └─ README.md
 ```
 
-### 后端接口
+## 后端接口
 
-- `GET /`
-- `GET /api/health`
-- `POST /api/auth/wx-login`
-- `POST /api/chat`
-- `GET /api/consultations/<id>/messages`
-- `POST /api/report/generate`
-- `GET /api/report/<consultation_id>`
-
-统一返回格式：
+所有 JSON 接口默认返回统一结构：
 
 ```json
 {
@@ -56,19 +62,108 @@
 }
 ```
 
-### 本地运行
+主要接口：
 
-#### 1. 安装依赖
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/` | 服务根路径 |
+| `GET` | `/api/health` | 健康检查 |
+| `POST` | `/api/auth/wx-login` | 小程序登录 |
+| `POST` | `/api/chat` | 非流式聊天 |
+| `POST` | `/api/chat/stream` | SSE 流式聊天 |
+| `GET` | `/api/consultations?user_id=<id>` | 查询用户历史问诊 |
+| `GET` | `/api/consultations/<id>/messages` | 查询问诊消息 |
+| `POST` | `/api/report/generate` | 生成或重新生成报告 |
+| `GET` | `/api/report/<consultation_id>` | 查询最新报告 |
+
+### `/api/auth/wx-login`
+
+请求体：
+
+```json
+{
+  "code": "wx-login-code",
+  "nickname": "微信用户"
+}
+```
+
+本地测试也可以传：
+
+```json
+{
+  "mock_openid": "local-user-1",
+  "nickname": "本地测试用户"
+}
+```
+
+生产环境下，后端要求云托管注入 `X-WX-OPENID` 或 `X-WX-FROM-OPENID` 请求头；否则返回 `WECHAT_OPENID_REQUIRED`。
+
+### `/api/chat`
+
+请求体：
+
+```json
+{
+  "user_id": 1,
+  "consultation_id": null,
+  "message": "我发烧两天，喉咙痛",
+  "locale": "zh-CN",
+  "client_request_id": "chat-unique-id"
+}
+```
+
+字段说明：
+
+- `user_id`：必填，登录接口返回的用户 ID。
+- `consultation_id`：可选；为空时创建新问诊，传已有 ID 时继续问诊。
+- `message`：必填，最多 2000 字符。
+- `locale`：可选，支持 `zh-CN` 和 `en-US`，其他值会归一到默认语言。
+- `client_request_id`：可选但推荐；用于 POST 重试幂等。
+
+### `/api/chat/stream`
+
+返回 `text/event-stream`，事件包括：
+
+- `meta`：返回 `consultation_id`、是否新建、用户消息 ID。
+- `delta`：增量文本。
+- `done`：完整 assistant 消息和风险等级。
+- `error`：流式过程中发生错误。
+
+微信云托管 `wx.cloud.callContainer` 不是真正的 chunk 级流式通道。当前小程序在云托管模式下会把 `/api/chat/stream` 映射到 `/api/chat`，再在前端转换为近似 SSE 片段。需要真正逐 token 流式时，应改用 `wx.cloud.connectContainer` / WebSocket 类方案。
+
+### `/api/report/generate`
+
+请求体：
+
+```json
+{
+  "consultation_id": 1,
+  "locale": "zh-CN"
+}
+```
+
+报告字段：
+
+- `symptoms_summary`
+- `possible_conditions`
+- `recommended_department`
+- `urgency_level`
+- `next_step_advice`
+- `disclaimer`
+
+报告免责声明由本地逻辑覆盖，避免模型输出替换安全边界。
+
+## 本地运行后端
+
+### 1. 安装依赖
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-#### 2. 配置环境变量
+### 2. 创建 `.env`
 
-在项目根目录新建 `.env` 并按需填写。
-
-本地最小可运行配置：
+在项目根目录创建 `.env`。本地最小配置：
 
 ```env
 FLASK_ENV=development
@@ -81,9 +176,14 @@ LLM_API_KEY=
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen3.6-plus
 LLM_TIMEOUT_SECONDS=30
+CHAT_LLM_TIMEOUT_SECONDS=8
+
+WECHAT_USE_REAL_AUTH=false
+WECHAT_APPID=
+WECHAT_APPSECRET=
 ```
 
-如果要接入阿里云百炼 Bailian：
+接入 Qwen/百炼时：
 
 ```env
 LLM_PROVIDER=qwen
@@ -91,30 +191,16 @@ LLM_API_KEY=YOUR_REAL_KEY_HERE
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen3.6-plus
 LLM_TIMEOUT_SECONDS=30
+CHAT_LLM_TIMEOUT_SECONDS=8
 ```
 
-说明：
+注意：
 
-- 不要把真实密钥写入代码、README 或版本库
-- `LLM_BASE_URL` 默认就是 Bailian 兼容模式地址
-- 当前实现仍兼容旧变量名 `LLM_API_URL`，但建议统一使用 `LLM_BASE_URL`
-- 生产环境不要继续使用 SQLite；云托管应切换到 MySQL，并通过 `DATABASE_URL` 配置连接
+- 不要把真实密钥写入代码、README 或提交到 Git。
+- `LLM_BASE_URL` 是推荐变量名；代码仍兼容旧的 `LLM_API_URL`。
+- `CHAT_LLM_TIMEOUT_SECONDS` 会限制聊天接口的快速回复超时；报告生成仍使用 `LLM_TIMEOUT_SECONDS`。
 
-#### 生产 MySQL 连接串示例
-
-推荐在微信云托管环境变量中配置：
-
-```env
-DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
-```
-
-说明：
-
-- 驱动已通过 `PyMySQL` 支持
-- `charset=utf8mb4` 建议保留，避免中文和 emoji 兼容问题
-- 如果数据库实例要求 SSL，可按数据库服务商要求继续在连接串中追加参数
-
-#### 3. 启动后端
+### 3. 启动服务
 
 ```bash
 python backend/run.py
@@ -125,29 +211,32 @@ python backend/run.py
 - 根路径：[http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 - 健康检查：[http://127.0.0.1:5000/api/health](http://127.0.0.1:5000/api/health)
 
-#### 4. 运行测试
+### 4. 运行测试
 
 ```bash
 python -m pytest backend/tests -q
 ```
 
-### 无需微信 GUI 的本地接口测试
+## PowerShell 接口自测
 
-先启动后端，再用以下示例验证。
+先启动后端，再在 PowerShell 执行以下命令。
 
-#### 1. 模拟登录
+### 登录
 
 ```powershell
 $login = Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:5000/api/auth/wx-login" `
   -ContentType "application/json" `
-  -Body '{"code":"local-test-code","nickname":"本地测试用户"}'
+  -Body (@{
+    mock_openid = "local-user-1"
+    nickname = "本地测试用户"
+  } | ConvertTo-Json)
 
 $userId = $login.data.user.id
 $userId
 ```
 
-#### 2. 中文 `/api/chat` 示例
+### 发送中文聊天
 
 ```powershell
 $chat = Invoke-RestMethod -Method Post `
@@ -157,31 +246,33 @@ $chat = Invoke-RestMethod -Method Post `
     user_id = $userId
     message = "我发烧两天，喉咙痛，还有一点咳嗽"
     locale = "zh-CN"
+    client_request_id = "local-chat-zh-1"
   } | ConvertTo-Json)
 
-$chat
+$chat.data.consultation_id
+$chat.data.assistant_message.content
 ```
 
-#### 3. 英文 `/api/chat` 示例
-
-```powershell
-$chatEn = Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:5000/api/chat" `
-  -ContentType "application/json" `
-  -Body (@{
-    user_id = $userId
-    message = "I have had a fever for two days and a sore throat"
-    locale = "en-US"
-  } | ConvertTo-Json)
-
-$chatEn
-```
-
-#### 4. `/api/report/generate` 示例
+### 继续同一问诊
 
 ```powershell
 $consultationId = $chat.data.consultation_id
 
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:5000/api/chat" `
+  -ContentType "application/json" `
+  -Body (@{
+    user_id = $userId
+    consultation_id = $consultationId
+    message = "最高体温 38.5 度，已经吃过退烧药"
+    locale = "zh-CN"
+    client_request_id = "local-chat-zh-2"
+  } | ConvertTo-Json)
+```
+
+### 生成报告
+
+```powershell
 Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:5000/api/report/generate" `
   -ContentType "application/json" `
@@ -191,399 +282,91 @@ Invoke-RestMethod -Method Post `
   } | ConvertTo-Json)
 ```
 
-### Qwen/Bailian 集成说明
+### 查询历史问诊
 
-当前 `LLMService` 使用原生 `requests` 调用 OpenAI 兼容接口，不增加额外 SDK 依赖。
+```powershell
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:5000/api/consultations?user_id=$userId"
+```
 
-- Provider 标识：`LLM_PROVIDER=qwen`
-- Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`
-- Chat 接口：`/chat/completions`
-- 模型默认值：`qwen3.6-plus`
+## 微信小程序配置
 
-聊天回复：
+使用微信开发者工具导入 `miniprogram/` 目录。
 
-- 高风险症状先走本地规则拦截
-- 非高风险时才调用模型
-- 模型超时时会自动重试 1 次
-- 模型失败时自动降级到本地安全回复
-- 聊天文本进入小程序前会去掉 Markdown 标记
-- 支持按 `locale` 输出中英文内容
-
-报告生成：
-
-- 使用 `response_format={"type":"json_object"}`
-- 提示词显式要求输出 `JSON`
-- 安全解析响应
-- 字段缺失时自动补安全默认值并记录 warning
-- 解析失败时自动返回降级报告，不会导致接口崩溃
-- 支持按 `locale` 输出中英文内容
-
-### 微信小程序联调说明
-
-使用微信开发者工具打开 `miniprogram/` 目录。
-
-#### 1. 需要确认的本地配置
-
-- [env.js](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/config/env.js) 中的 `baseURL`
-- [project.config.json](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/project.config.json) 中的 `appid`
-
-如果开发者工具不能访问 `127.0.0.1`，把 `baseURL` 改成你电脑的局域网 IP，例如：
+核心配置在 [miniprogram/config/env.js](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/config/env.js)：
 
 ```js
-baseURL: 'http://192.168.1.10:5000'
-```
-
-#### 2. 开发者工具设置
-
-- 本地调试时关闭或放开“合法域名校验”
-- 修改配置后建议执行一次“清缓存并编译”
-
-#### 3. 当前小程序交互
-
-聊天页：
-
-- 发送后用户消息立即入列
-- 同时显示 `AI 正在思考` 占位
-- 请求失败时会完整回滚到发送前状态
-- 支持 `开始新问诊`
-- 支持 `中 / EN` 切换
-- 显示消息时间和发送状态
-
-报告页：
-
-- 展示结构化摘要字段
-- 支持 `返回继续问诊`
-- 支持 `重新生成报告`
-- 支持 `开始新问诊`
-- 支持 `中 / EN` 切换
-
-#### 4. 推荐联调步骤
-
-1. 启动后端
-2. 打开微信开发者工具并导入 `miniprogram/`
-3. 先验证 mock 登录
-4. 发送一条普通症状，确认聊天回复正常
-5. 测试一条高风险症状，确认本地拦截生效
-6. 点击“生成医生摘要”，确认报告页正常
-7. 切换到 `EN`，再测一条英文症状，确认前后端一起切换
-
-### 微信云托管部署提示
-
-如果你要将当前仓库部署到微信云托管：
-
-- 端口填 `80`
-- 目标目录填仓库根目录 `.`
-- Dockerfile 使用根目录下的 [Dockerfile](/d:/Users/Admin/Desktop/Wechat%20program/Dockerfile)
-- 生产环境变量至少应配置：
-
-```env
-FLASK_ENV=production
-SECRET_KEY=一个新的高强度随机字符串
-DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
-LOG_LEVEL=INFO
-
-LLM_PROVIDER=qwen
-LLM_API_KEY=YOUR_REAL_KEY_HERE
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen3.6-plus
-LLM_TIMEOUT_SECONDS=30
-
-WECHAT_USE_REAL_AUTH=false
-WECHAT_APPID=你的小程序 AppID
-WECHAT_APPSECRET=你的小程序 AppSecret
-```
-
-注意：
-
-- 当前后端已在 `production` 下禁止默认 `SECRET_KEY` 和 SQLite 启动
-- `.env` 不应再提交到 Git 仓库
-- 如果你曾把真实密钥提交过 Git 历史，请先轮换密钥再部署
-
-### 安全边界
-
-- 本产品是预问诊辅助工具，不是诊断系统
-- 不输出最终诊断
-- 保留本地紧急症状拦截，优先级高于任何模型调用
-- 患者侧始终保留免责声明
-- 高风险症状如胸痛、严重呼吸困难、失去意识、严重出血等会优先走本地升级路径
-
-### 当前已知限制
-
-- 登录仍是 stub，尚未接入真实微信 `code2Session`
-- 英文模式下的真实模型输出质量仍取决于 Qwen 实际返回，不是完全固定模板
-- 当前未加入数据库迁移工具，模型结构变更仍以 MVP 方式处理
-- 前端仍以原生小程序为主，未接入更复杂的富文本渲染
-
-### 已留出的 TODO
-
-- `TODO: replace stubbed login with real WeChat code2Session flow.`
-- `TODO_REPLACE_WITH_REAL_WECHAT_APPID`
-- `TODO_REPLACE_WITH_REAL_MINIPROGRAM_APPID`
-- 微信合法 request 域名配置
-- 生产环境数据库与云托管部署参数
-
----
-
-## English
-
-### Overview
-
-This is a locally runnable, demo-ready end-to-end MVP:
-
-- Frontend: native WeChat Mini Program
-- Backend: Python Flask
-- Database: SQLite by default for zero-setup local development; can switch to a MySQL-compatible connection string in production
-- AI: external LLM providers are abstracted behind `LLMService`; currently supports `mock` and Alibaba Cloud Bailian via the OpenAI-compatible API
-- Deployment target: can be migrated to WeChat Cloud Hosting after local validation
-
-### Implemented Features
-
-- Patients can describe symptoms in a chat-style interface
-- The backend stores users, consultations, messages, and reports
-- Emergency keywords are intercepted locally before any model call
-- Normal conversations can use Qwen for pre-visit assistance
-- The system can generate a structured pre-visit report from consultation history
-- All patient-facing outputs include a disclaimer and never present a final diagnosis
-- The Mini Program supports Chinese/English UI switching
-- When the UI language changes, backend chat replies, report content, and disclaimers switch language as well
-- The chat page supports optimistic message insertion, AI thinking placeholders, and rollback on send failure
-- The report page supports back-to-chat, regenerate report, and start-new-consultation actions
-
-### Repository Structure
-
-```text
-.
-├─ backend/                 # Flask backend
-├─ miniprogram/             # WeChat Mini Program frontend
-├─ requirements.txt
-└─ README.md
-```
-
-### Backend APIs
-
-- `GET /`
-- `GET /api/health`
-- `POST /api/auth/wx-login`
-- `POST /api/chat`
-- `GET /api/consultations/<id>/messages`
-- `POST /api/report/generate`
-- `GET /api/report/<consultation_id>`
-
-Unified response shape:
-
-```json
-{
-  "success": true,
-  "code": "OK",
-  "message": "OK",
-  "data": {}
+const env = {
+  transport: 'cloud-container',
+  cloudEnv: 'prod-d5g1plnin0443c04a',
+  cloudService: 'test',
+  cloudResourceAppid: '',
+  cloudResourceEnv: '',
+  baseURL: 'https://test-249099-6-1424293714.sh.run.tcloudbase.com/',
+  timeout: 70000
 }
 ```
 
-### Local Run
+字段说明：
 
-#### 1. Install dependencies
+| 字段 | 说明 |
+| --- | --- |
+| `transport` | `'cloud-container'` 使用 `wx.cloud.callContainer`；其他值走 `wx.request` |
+| `cloudEnv` | 小程序关联的云开发环境 ID |
+| `cloudService` | 云托管服务名，会作为 `X-WX-SERVICE` |
+| `cloudResourceAppid` | 跨账号资源方 AppID；为空表示使用当前小程序云环境 |
+| `cloudResourceEnv` | 跨账号资源方环境 ID |
+| `baseURL` | `wx.request` 模式下的后端基础 URL |
+| `timeout` | 小程序请求超时时间，毫秒 |
 
-```bash
-python -m pip install -r requirements.txt
+### 本地联调模式
+
+如果要在微信开发者工具中连本地 Flask：
+
+```js
+const env = {
+  transport: 'http',
+  cloudEnv: '',
+  cloudService: '',
+  cloudResourceAppid: '',
+  cloudResourceEnv: '',
+  baseURL: 'http://127.0.0.1:5000',
+  timeout: 60000
+}
 ```
 
-#### 2. Configure environment variables
-
-Create a `.env` file at the project root and fill in the values as needed.
-
-Minimal local configuration:
-
-```env
-FLASK_ENV=development
-SECRET_KEY=replace-me
-DATABASE_URL=sqlite:///pre_diagnosis.db
-LOG_LEVEL=INFO
-
-LLM_PROVIDER=mock
-LLM_API_KEY=
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen3.6-plus
-LLM_TIMEOUT_SECONDS=30
-```
-
-To connect Alibaba Cloud Bailian:
-
-```env
-LLM_PROVIDER=qwen
-LLM_API_KEY=YOUR_REAL_KEY_HERE
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen3.6-plus
-LLM_TIMEOUT_SECONDS=30
-```
-
-Notes:
-
-- Never hardcode real secrets in code, the README, or the repository
-- `LLM_BASE_URL` defaults to the Bailian compatible-mode endpoint
-- The implementation still accepts the legacy `LLM_API_URL` name, but `LLM_BASE_URL` is preferred
-- Do not keep using SQLite in production; for Cloud Hosting you should switch to MySQL and provide it through `DATABASE_URL`
-
-#### Production MySQL connection string example
-
-Use an environment variable like:
-
-```env
-DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
-```
-
-Notes:
-
-- `PyMySQL` is now included as the driver
-- Keeping `charset=utf8mb4` is recommended for Chinese text and emoji compatibility
-- If your database requires SSL, append the required parameters according to your provider
-
-#### 3. Start the backend
-
-```bash
-python backend/run.py
-```
-
-Default addresses:
-
-- Root: [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
-- Health check: [http://127.0.0.1:5000/api/health](http://127.0.0.1:5000/api/health)
-
-#### 4. Run tests
-
-```bash
-python -m pytest backend/tests -q
-```
-
-### Local API Checks Without WeChat GUI
-
-Start the backend first, then use the following examples.
-
-#### 1. Mock login
-
-```powershell
-$login = Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:5000/api/auth/wx-login" `
-  -ContentType "application/json" `
-  -Body '{"code":"local-test-code","nickname":"Local Test User"}'
-
-$userId = $login.data.user.id
-$userId
-```
-
-#### 2. English `/api/chat` example
-
-```powershell
-$chatEn = Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:5000/api/chat" `
-  -ContentType "application/json" `
-  -Body (@{
-    user_id = $userId
-    message = "I have had a fever for two days and a sore throat"
-    locale = "en-US"
-  } | ConvertTo-Json)
-
-$chatEn
-```
-
-#### 3. `/api/report/generate` example
-
-```powershell
-$consultationId = $chatEn.data.consultation_id
-
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:5000/api/report/generate" `
-  -ContentType "application/json" `
-  -Body (@{
-    consultation_id = $consultationId
-    locale = "en-US"
-  } | ConvertTo-Json)
-```
-
-### Qwen/Bailian Integration
-
-`LLMService` uses raw `requests` against the OpenAI-compatible API, without adding an extra SDK dependency.
-
-- Provider id: `LLM_PROVIDER=qwen`
-- Base URL: `https://dashscope.aliyuncs.com/compatible-mode/v1`
-- Chat endpoint: `/chat/completions`
-- Default model: `qwen3.6-plus`
-
-Chat behavior:
-
-- Emergency symptoms are intercepted locally before model calls
-- Non-emergency conversations go to the model
-- Timeouts are retried once automatically
-- Provider failures fall back to a safe local reply
-- Markdown is normalized before the content reaches the Mini Program
-- Output language follows `locale`
-
-Report behavior:
-
-- Uses `response_format={"type":"json_object"}`
-- Prompts explicitly require `JSON`
-- Provider responses are parsed safely
-- Missing fields are filled with safe defaults and logged as warnings
-- Invalid JSON falls back to a safe degraded report instead of crashing
-- Output language follows `locale`
-
-### WeChat Mini Program Debugging
-
-Open the `miniprogram/` directory in WeChat DevTools.
-
-#### 1. Local configuration to check
-
-- `baseURL` in [env.js](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/config/env.js)
-- `appid` in [project.config.json](/d:/Users/Admin/Desktop/Wechat%20program/miniprogram/project.config.json)
-
-If DevTools cannot access `127.0.0.1`, switch `baseURL` to your machine's LAN IP, for example:
+如果开发者工具无法访问 `127.0.0.1`，把 `baseURL` 改成电脑局域网 IP，例如：
 
 ```js
 baseURL: 'http://192.168.1.10:5000'
 ```
 
-#### 2. DevTools settings
+本地调试时通常还需要在微信开发者工具中关闭或放开“合法域名校验”，修改配置后执行“清缓存并编译”。
 
-- Disable or relax legal-domain checks for local debugging
-- After changing config, use “Clear cache and recompile”
+### 云托管模式
 
-#### 3. Current frontend interactions
+当前默认配置走云托管私有调用：
 
-Chat page:
+- 小程序启动时执行 `wx.cloud.init({ env: env.cloudEnv, traceUser: true })`。
+- 普通请求调用 `wx.cloud.callContainer`。
+- 请求头包含 `X-WX-SERVICE: env.cloudService`。
+- 后端生产环境通过云托管注入的 OpenID 请求头识别用户来源。
 
-- User messages appear immediately after tapping send
-- An AI thinking placeholder is shown while waiting
-- Failed sends roll back to the previous UI state
-- Supports starting a new consultation
-- Supports `中 / EN` language switching
-- Shows message timestamps and send status
+云托管常见错误：
 
-Report page:
+- `cloud.callContainer:fail system error. code: 102002`：优先检查云托管服务是否已部署、服务名是否正确、小程序是否关联了正确云环境、云端日志是否有容器启动失败。
+- `INVALID_HOST` 或 `-501000`：通常是云环境 ID、服务名或资源方配置不匹配。
+- `options.timeout == 15000`：旧版小程序请求曾把云托管请求限制在 15 秒；当前配置使用 `env.timeout`，默认示例为 70 秒。
 
-- Shows structured report fields
-- Supports back-to-chat
-- Supports regenerate report
-- Supports start new consultation
-- Supports `中 / EN` language switching
+## 微信云托管部署
 
-#### 4. Recommended debug flow
+推荐云托管服务配置：
 
-1. Start the backend
-2. Open WeChat DevTools and import `miniprogram/`
-3. Verify mock login first
-4. Send one normal symptom message and confirm chat replies work
-5. Test one emergency symptom and confirm local escalation triggers
-6. Generate a doctor summary and confirm the report page works
-7. Switch to `EN`, then send an English symptom and confirm frontend and backend both switch together
+- 服务端口：`80`
+- 目标目录：项目根目录 `.`
+- Dockerfile：根目录 [Dockerfile](/d:/Users/Admin/Desktop/Wechat%20program/Dockerfile)
 
-### WeChat Cloud Hosting Deployment Notes
-
-If you deploy this repository to WeChat Cloud Hosting:
-
-- Set the service port to `80`
-- Use the repository root `.` as the target directory
-- Use the root-level [Dockerfile](/d:/Users/Admin/Desktop/Wechat%20program/Dockerfile)
-- At minimum, configure these production environment variables:
+生产环境变量至少应包含：
 
 ```env
 FLASK_ENV=production
@@ -596,38 +379,112 @@ LLM_API_KEY=YOUR_REAL_KEY_HERE
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen3.6-plus
 LLM_TIMEOUT_SECONDS=30
+CHAT_LLM_TIMEOUT_SECONDS=8
 
 WECHAT_USE_REAL_AUTH=false
 WECHAT_APPID=your-mini-program-appid
 WECHAT_APPSECRET=your-mini-program-appsecret
 ```
 
-Important:
+生产启动校验：
 
-- The backend now refuses to start in `production` with the default `SECRET_KEY`
-- The backend now refuses to start in `production` with SQLite
-- `.env` should not be committed to Git
-- If real secrets were ever committed into Git history, rotate them before deployment
+- `SECRET_KEY` 不能为空或 `replace-me`。
+- `DATABASE_URL` 不能使用 SQLite。
+- `LLM_PROVIDER` 不能是 `mock`。
+- `LLM_PROVIDER=qwen` 时必须提供 `LLM_API_KEY`。
+- 如果 `WECHAT_USE_REAL_AUTH=true`，必须提供 `WECHAT_APPID` 和 `WECHAT_APPSECRET`。
 
-### Safety Boundaries
+数据库建议：
 
-- This product is a pre-visit assistance tool, not a diagnosis system
-- It never returns a definitive diagnosis
-- Local emergency interception always takes precedence over model calls
-- Patient-facing outputs always include a disclaimer
-- High-risk symptoms such as chest pain, severe breathing difficulty, loss of consciousness, or severe bleeding trigger a local escalation path first
+```env
+DATABASE_URL=mysql+pymysql://username:password@host:3306/dbname?charset=utf8mb4
+```
 
-### Known Limitations
+保留 `charset=utf8mb4`，避免中文和 emoji 存储问题。如果数据库要求 SSL，按服务商要求追加连接参数。
 
-- Login is still stubbed and does not use real WeChat `code2Session`
-- In English mode, real model output quality still depends on the actual Qwen response, not only on fixed templates
-- There is no migration tool yet; schema changes are still handled in MVP style
-- The frontend still uses native Mini Program rendering and does not include advanced rich-text rendering
+## LLM 行为
 
-### TODO
+`LLMService` 使用 `requests` 直接调用 OpenAI 兼容接口，不额外引入 SDK。
 
-- `TODO: replace stubbed login with real WeChat code2Session flow.`
-- `TODO_REPLACE_WITH_REAL_WECHAT_APPID`
-- `TODO_REPLACE_WITH_REAL_MINIPROGRAM_APPID`
-- WeChat legal request domain configuration
-- Production database and cloud-hosting deployment parameters
+Qwen/百炼默认信息：
+
+- Provider：`qwen`
+- Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`
+- Endpoint：`/chat/completions`
+- 默认模型：`qwen3.6-plus`
+
+聊天行为：
+
+- 高风险症状先走本地规则。
+- 非高风险消息才调用外部模型。
+- 聊天接口使用较短的 `CHAT_LLM_TIMEOUT_SECONDS`，失败时降级到本地安全回复。
+- 模型输出会清理 Markdown 标记，避免小程序原生文本渲染异常。
+- 输出语言跟随 `locale`。
+
+报告行为：
+
+- 请求模型时使用 `response_format={"type":"json_object"}`。
+- Prompt 明确要求 JSON 输出。
+- 解析失败时降级到本地安全报告。
+- 缺失字段会用安全默认值补齐。
+- `disclaimer` 始终使用本地免责声明。
+
+## 安全边界
+
+- 本项目只做预问诊信息整理，不做最终诊断。
+- 患者侧输出必须包含免责声明。
+- 高风险症状本地拦截优先级高于模型调用。
+- 胸痛、严重呼吸困难、意识丧失、严重出血等症状应触发升级提醒。
+- 生产环境不要使用 mock 模型、默认密钥或 SQLite。
+
+## 已知限制
+
+- 当前登录依赖微信云托管注入的 OpenID 或本地 mock openid；还没有完整实现传统 `code2Session` 主动换取流程。
+- 云托管 `callContainer` 不提供真实 chunk 级 SSE；当前为兼容小程序体验做了近似流式。
+- 数据库表结构由 `db.create_all()` 和运行时 schema 补齐处理，尚未接入 Alembic 等迁移工具。
+- 小程序仍使用原生文本渲染，没有复杂富文本渲染。
+- 英文真实回复质量取决于外部模型输出，不是完全固定模板。
+
+## TODO
+
+- 完整接入真实微信 `code2Session` 流程，或明确只依赖云托管 OpenID 注入。
+- 为数据库变更引入正式 migration。
+- 根据正式部署环境替换 `cloudEnv`、`cloudService`、`baseURL` 和小程序 `appid`。
+- 配置微信合法域名和云托管服务权限。
+- 如需真实流式体验，设计 `wx.cloud.connectContainer` / WebSocket 通道。
+
+---
+
+## English Summary
+
+This repository is a WeChat Mini Program MVP for medical pre-visit intake. It includes a native Mini Program frontend, a Flask backend, SQLite/MySQL persistence, Qwen/Bailian OpenAI-compatible LLM integration, local emergency-risk interception, structured report generation, and WeChat Cloud Hosting support.
+
+Quick start:
+
+```bash
+python -m pip install -r requirements.txt
+python backend/run.py
+python -m pytest backend/tests -q
+```
+
+Core configuration:
+
+- Backend environment variables are loaded from `.env`.
+- Mini Program transport is configured in `miniprogram/config/env.js`.
+- Use `transport: 'http'` for local `wx.request` debugging.
+- Use `transport: 'cloud-container'` for `wx.cloud.callContainer` private Cloud Hosting access.
+- Production must use a non-default `SECRET_KEY`, a MySQL-compatible `DATABASE_URL`, and a real LLM provider.
+
+Main endpoints:
+
+- `GET /`
+- `GET /api/health`
+- `POST /api/auth/wx-login`
+- `POST /api/chat`
+- `POST /api/chat/stream`
+- `GET /api/consultations?user_id=<id>`
+- `GET /api/consultations/<id>/messages`
+- `POST /api/report/generate`
+- `GET /api/report/<consultation_id>`
+
+Safety scope: this project organizes information before a visit. It does not provide a final diagnosis and must not replace in-person medical evaluation.

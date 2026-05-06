@@ -24,7 +24,9 @@ def test_mock_fallback_uses_english_locale():
         "en-US",
     )
 
-    assert "So far I understand the main issue as:" in chat_result["content"]
+    assert "So far I understand the main issue as:" not in chat_result["content"]
+    assert "That gives me a useful starting point." in chat_result["content"]
+    assert "how long it has lasted" not in chat_result["content"]
     assert "highest temperature" in chat_result["content"]
     assert report_result["recommended_department"] == "General medicine"
     assert report_result["disclaimer"] == get_disclaimer("en-US")

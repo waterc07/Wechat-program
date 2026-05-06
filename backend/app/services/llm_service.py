@@ -426,56 +426,10 @@ class LLMService:
     def _mock_chat_reply(self, fallback_context):
         latest_user_message = fallback_context.get("latest_user_message", "")
         locale = normalize_locale(fallback_context.get("locale"))
-        follow_up_question = self._build_contextual_follow_up(latest_user_message, locale)
-
-        if locale == "en-US":
-            summary = latest_user_message[:120] or "You have provided an initial symptom description"
-            content = (
-                f"I've received your symptom description: {summary}. "
-                "The current information is only for pre-visit organization and does not replace a doctor's diagnosis. "
-                f"{follow_up_question}"
-            )
-        else:
-            summary = latest_user_message[:120] or "您已提供初步症状描述"
-            content = (
-                f"已收到您的症状描述：{summary}。当前信息仅用于就诊前整理，不能替代医生诊断。"
-                f"{follow_up_question}"
-            )
-        return {"content": content, "risk_level": "low", "provider": "mock"}
-
-    def _build_contextual_follow_up(self, latest_user_message, locale):
-        text = (latest_user_message or "").lower()
-
-        if locale == "en-US":
-            if any(word in text for word in ["fever", "temperature"]):
-                return (
-                    "Please add how many days this has lasted, the highest temperature, and whether you also have cough, sore throat, chills, or worsening symptoms."
-                )
-            if any(word in text for word in ["headache", "head pain"]):
-                return (
-                    "Please add how long the headache has lasted, where it is located, how severe it is, and whether it is accompanied by fever, nausea, or dizziness."
-                )
-            if any(word in text for word in ["cough", "sore throat", "throat pain"]):
-                return (
-                    "Please add how long this has lasted, whether you have sputum or fever, and whether swallowing or coughing makes it worse."
-                )
-            return get_default_assistant_question(locale)
-
-        if any(word in text for word in ["发烧", "发热", "低烧", "高烧", "体温"]):
-            return "请补充已经持续了几天、最高体温大概多少，以及是否伴有咳嗽、咽痛、怕冷或症状加重。"
-        if any(word in text for word in ["头痛", "头疼", "头部疼痛"]):
-            return "请补充头痛已经持续多久、疼痛部位和严重程度，以及是否伴有发热、恶心、眩晕或畏光。"
-        if any(word in text for word in ["咳嗽", "喉咙痛", "咽痛", "嗓子痛"]):
-            return "请补充症状已经持续多久，是否有痰或发热，以及吞咽或咳嗽时是否明显加重。"
-        return get_default_assistant_question(locale)
-
-    def _mock_chat_reply(self, fallback_context):
-        latest_user_message = fallback_context.get("latest_user_message", "")
-        locale = normalize_locale(fallback_context.get("locale"))
         conversation_text = fallback_context.get("conversation_text", "")
         context_text = f"{conversation_text}\n{latest_user_message}".strip()
-        summary = self._summarize_user_message(latest_user_message, locale)
-        acknowledgement = self._build_acknowledgement(latest_user_message, locale)
+        opening = self._build_natural_opening(latest_user_message, locale)
+        observation = self._build_observation(latest_user_message, locale)
         follow_up_question = self._build_contextual_follow_up(
             latest_user_message,
             locale,
@@ -483,43 +437,35 @@ class LLMService:
         )
 
         if locale == "en-US":
-            content = (
-                f"{acknowledgement} "
-                f"So far I understand the main issue as: {summary}. "
-                f"{follow_up_question}"
-            )
+            content = " ".join(part for part in [opening, observation, follow_up_question] if part)
         else:
-            content = (
-                f"{acknowledgement}"
-                f"我先理解为：{summary}。"
-                f"{follow_up_question}"
-            )
+            content = "".join(part for part in [opening, observation, follow_up_question] if part)
         return {"content": content, "risk_level": "low", "provider": "mock"}
 
-    def _build_acknowledgement(self, latest_user_message, locale):
+    def _build_natural_opening(self, latest_user_message, locale):
         text = (latest_user_message or "").lower()
 
         if locale == "en-US":
-            if any(word in text for word in ["pain", "hurt", "ache"]):
-                return "I understand that this has been uncomfortable."
             if any(word in text for word in ["fever", "temperature", "cough", "vomit", "nausea"]):
-                return "Thanks, that gives me a clearer picture of what you're experiencing."
-            return "I understand what you've described."
+                return "That gives me a useful starting point."
+            if any(word in text for word in ["pain", "hurt", "ache", "headache"]):
+                return "That sounds uncomfortable."
+            return "Let's sort through the key details first."
 
-        if any(word in text for word in ["痛", "疼", "难受"]):
-            return "明白，这样确实会让人不舒服。"
         if any(word in text for word in ["发烧", "发热", "咳嗽", "恶心", "呕吐"]):
-            return "收到，这样我对您目前的情况更清楚一些。"
-        return "收到，我已经理解您刚才描述的情况。"
+            return "先把发作过程问清楚，会更容易判断下一步该怎么处理。"
+        if any(word in text for word in ["痛", "疼", "难受"]):
+            return "听起来不太舒服，我们先抓最关键的信息。"
+        return "我们先把情况一点点理清楚。"
 
-    def _summarize_user_message(self, latest_user_message, locale):
+    def _build_observation(self, latest_user_message, locale):
         cleaned = re.sub(r"\s+", " ", (latest_user_message or "")).strip()
-        if cleaned:
-            return cleaned[:120]
+        if not cleaned:
+            return ""
 
         if locale == "en-US":
-            return "you have described an initial symptom concern"
-        return "您提供了初步的症状描述"
+            return f'You mentioned "{cleaned[:120]}".'
+        return f"你刚才提到“{cleaned[:120]}”。"
 
     def _build_contextual_follow_up(self, latest_user_message, locale, context_text=""):
         text = (latest_user_message or "").lower()
@@ -529,32 +475,48 @@ class LLMService:
             if any(word in full_text for word in ["fever", "temperature"]):
                 missing = self._build_missing_fever_fields_en(full_text)
                 if missing:
-                    return f"To narrow it down, please add {', '.join(missing)}."
-                return "Next, please note whether the cough has sputum, whether symptoms are getting worse, and whether medicine or rest helps."
+                    return self._build_missing_question_en(missing)
+                return "Is the fever coming down after medicine or rest, or is it still rising?"
             if any(word in full_text for word in ["headache", "head pain"]):
                 missing = self._build_missing_headache_fields_en(full_text)
                 if missing:
-                    return f"What I still need most is {', '.join(missing)}."
-                return "Next, please watch whether the headache worsens, becomes one-sided, or comes with vomiting, stiff neck, or unusual drowsiness."
+                    return self._build_missing_question_en(missing)
+                return "Has the headache changed in intensity or come with vomiting, neck stiffness, or unusual drowsiness?"
             if any(word in text for word in ["cough", "sore throat", "throat pain"]):
                 return (
-                    "What I want to confirm next is how long this has lasted, whether you have sputum or fever, and whether swallowing or coughing makes it worse?"
+                    "How long has this been going on, and does swallowing or coughing make it noticeably worse?"
                 )
-            return get_default_assistant_question(locale)
+            return "How long has this been going on, and what symptom is bothering you the most right now?"
 
         if any(word in full_text for word in ["发烧", "发热", "低烧", "高烧", "体温"]):
             missing = self._build_missing_fever_fields_zh(full_text)
             if missing:
-                return f"我现在还需要补充确认：{'、'.join(missing)}。"
-            return "接下来更需要确认的是：咳嗽有没有痰，症状是在加重还是缓解，用过退烧药后体温能不能降下来。"
+                return self._build_missing_question_zh(missing)
+            if "咳嗽" in full_text:
+                return "咳嗽有没有痰，症状是在变重还是慢慢缓下来？"
+            return "吃过退烧药或休息以后，体温能降下来吗，还是还在往上走？"
         if any(word in full_text for word in ["头痛", "头疼", "头部疼痛"]):
             missing = self._build_missing_headache_fields_zh(full_text)
             if missing:
-                return f"我现在还需要补充确认：{'、'.join(missing)}。"
-            return "接下来请留意头痛是否加重，是否出现喷射性呕吐、颈部僵硬、明显嗜睡或意识异常。"
+                return self._build_missing_question_zh(missing)
+            return "现在头痛是在变重，还是能缓下来；有没有呕吐、颈部僵硬或明显嗜睡？"
         if any(word in text for word in ["咳嗽", "喉咙痛", "咽痛", "嗓子痛"]):
-            return "接下来我想确认一下：症状持续多久了，有没有痰或发热，吞咽时会不会更明显？"
-        return get_default_assistant_question(locale)
+            return "这种不舒服持续多久了，吞咽或咳嗽时会不会明显加重？"
+        return "这种情况大概持续多久了，现在最困扰你的是哪一个症状？"
+
+    def _build_missing_question_zh(self, fields):
+        if len(fields) == 1:
+            return f"现在最想确认的是：{fields[0]}？"
+        if len(fields) == 2:
+            return f"现在最想确认两个点：{fields[0]}，还有{fields[1]}？"
+        return f"现在最想确认几个点：{fields[0]}、{fields[1]}，还有{fields[2]}？"
+
+    def _build_missing_question_en(self, fields):
+        if len(fields) == 1:
+            return f"The main thing I need now is {fields[0]}."
+        if len(fields) == 2:
+            return f"The two details that would help most are {fields[0]} and {fields[1]}."
+        return f"The details that would help most are {fields[0]}, {fields[1]}, and {fields[2]}."
 
     def _build_missing_fever_fields_zh(self, text):
         fields = []
@@ -594,7 +556,7 @@ class LLMService:
 
     def _build_missing_fever_fields_en(self, text):
         fields = []
-        if not re.search(r"\b\d+\s*(day|days|hour|hours|week|weeks)\b", text):
+        if not self._mentions_duration_en(text):
             fields.append("how long it has lasted")
         if not re.search(r"\b\d{2,3}(?:\.\d)?\s*(?:c|f|°|degrees?)?\b", text):
             fields.append("the highest temperature")
@@ -606,13 +568,23 @@ class LLMService:
 
     def _build_missing_headache_fields_en(self, text):
         fields = []
-        if not re.search(r"\b\d+\s*(day|days|hour|hours|week|weeks)\b", text):
+        if not self._mentions_duration_en(text):
             fields.append("how long the headache has lasted")
         if not any(word in text for word in ["forehead", "temple", "back of head", "one side", "both sides", "location"]):
             fields.append("where it is located")
         if not any(word in text for word in ["mild", "moderate", "severe", "intense", "severity"]):
             fields.append("how severe it is")
         return fields[:3]
+
+    def _mentions_duration_en(self, text):
+        return bool(
+            re.search(r"\b\d+\s*(day|days|hour|hours|week|weeks)\b", text)
+            or re.search(
+                r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+"
+                r"(day|days|hour|hours|week|weeks)\b",
+                text,
+            )
+        )
 
     def _mock_report(self, fallback_context):
         conversation_text = fallback_context.get("conversation_text", "")
