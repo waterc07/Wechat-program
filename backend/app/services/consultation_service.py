@@ -36,11 +36,20 @@ class ConsultationService:
         db.session.commit()
         return consultation, True
 
-    def add_message(self, consultation, role, content, risk_level="low"):
+    def find_message_by_client_request_id(self, consultation_id, client_request_id):
+        if not client_request_id:
+            return None
+        return Message.query.filter_by(
+            consultation_id=consultation_id,
+            client_request_id=client_request_id,
+        ).first()
+
+    def add_message(self, consultation, role, content, risk_level="low", client_request_id=""):
         message = Message(
             consultation_id=consultation.id,
             role=role,
             content=content,
+            client_request_id=client_request_id or None,
             risk_level=risk_level,
         )
         db.session.add(message)

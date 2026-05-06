@@ -3,6 +3,77 @@ const env = require('../config/env')
 let resourceCloudClient = null
 let resourceCloudInitPromise = null
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000
+const MAX_RETRY_ATTEMPTS = 3
+const RETRY_BASE_DELAY_MS = 800
+
+function getRequestTimeout() {
+  return env.timeout || DEFAULT_REQUEST_TIMEOUT_MS
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function getRawErrorMessage(error) {
+  return error && error.errMsg ? error.errMsg : error && error.message ? error.message : ''
+}
+
+function isTimeoutError(error) {
+  return getRawErrorMessage(error).toLowerCase().includes('timeout')
+}
+
+function isNetworkFailure(error) {
+  const message = getRawErrorMessage(error).toLowerCase()
+  return (
+    (error && error.code === 'NETWORK_ERROR') ||
+    isTimeoutError(error) ||
+    message.includes('fail') ||
+    message.includes('socket') ||
+    message.includes('network') ||
+    message.includes('interrupted') ||
+    message.includes('connection') ||
+    message.includes('reset') ||
+    message.includes('refused')
+  )
+}
+
+function isRetryableStatus(statusCode) {
+  return statusCode === 408 || statusCode === 429 || statusCode >= 500
+}
+
+function getRetryDelay(attempt) {
+  return RETRY_BASE_DELAY_MS * attempt * attempt
+}
+
+function withRetry(operation, context, shouldRetry) {
+  let attempt = 1
+
+  function run() {
+    return operation(attempt).catch((error) => {
+      const retryable = typeof shouldRetry === 'function' ? shouldRetry(error) : isNetworkFailure(error)
+      if (!retryable || attempt >= MAX_RETRY_ATTEMPTS) {
+        throw error
+      }
+
+      console.warn('[request:retry]', {
+        transport: context.transport,
+        path: context.path,
+        method: context.method,
+        attempt,
+        nextAttempt: attempt + 1,
+        error
+      })
+      attempt += 1
+      return wait(getRetryDelay(attempt)).then(run)
+    })
+  }
+
+  return run()
+}
+
 function isCloudContainerTransport() {
   return env.transport === 'cloud-container'
 }
@@ -20,7 +91,15 @@ function getEndpointDisplay() {
 }
 
 function normalizeErrorMessage(error) {
-  const rawMessage = error && error.errMsg ? error.errMsg : error && error.message ? error.message : ''
+  // 优先识别来自云调用 SDK 的数值型错误码（例如 102002 系统错误），返回更明确的建议。
+  if (error && (error.errCode === 102002 || error.errcode === 102002 || error.code === 102002)) {
+    return '云托管系统错误 (102002)：请检查云托管服务是否已部署、服务名和环境是否与小程序关联正确，并查看云端日志以获取详细信息。'
+  }
+
+  const rawMessage = getRawErrorMessage(error)
+  if (isTimeoutError(error)) {
+    return '请求超时，请检查网络或稍后重试'
+  }
   if (rawMessage.includes('INVALID_HOST') || rawMessage.includes('-501000')) {
     return `云托管主机无效，请核对环境 ${env.cloudEnv || '(默认)'} 和服务 ${env.cloudService}`
   }
@@ -49,6 +128,16 @@ function unwrapCloudResponse(response) {
     statusCode,
     header: (response && response.header) || {},
     data: body
+  }
+}
+
+function buildRequestError({ statusCode, message, code, data, raw }) {
+  return {
+    statusCode,
+    message: message || normalizeErrorMessage(raw),
+    code: code || (isRetryableStatus(statusCode) ? 'NETWORK_RETRYABLE' : 'REQUEST_ERROR'),
+    data: data || {},
+    raw
   }
 }
 
@@ -86,7 +175,7 @@ function buildCloudCallOptions(options) {
     header,
     data: options.data || {},
     dataType: options.dataType,
-    timeout: Math.min(env.timeout || 15000, 15000)
+    timeout: getRequestTimeout()
   }
 
   if (!isResourceCloudTransport()) {
@@ -118,6 +207,22 @@ function getCloudCaller() {
   return resourceCloudInitPromise.then(() => resourceCloudClient)
 }
 
+function callCloudContainer(cloud, callOptions) {
+  return cloud.callContainer(callOptions).then((response) => {
+    const normalized = unwrapCloudResponse(response)
+    if (isRetryableStatus(normalized.statusCode)) {
+      throw buildRequestError({
+        statusCode: normalized.statusCode,
+        message: `Server returned ${normalized.statusCode}`,
+        code: 'NETWORK_RETRYABLE',
+        data: normalized.data || {},
+        raw: response
+      })
+    }
+    return response
+  })
+}
+
 function requestByCloudContainer(options) {
   return new Promise((resolve, reject) => {
     let callOptions = null
@@ -137,11 +242,22 @@ function requestByCloudContainer(options) {
       method: callOptions.method,
       service: env.cloudService,
       env: env.cloudEnv,
+      timeout: callOptions.timeout,
       data: callOptions.data
     })
 
     getCloudCaller()
-      .then((cloud) => cloud.callContainer(callOptions))
+      .then((cloud) =>
+        withRetry(
+          () => callCloudContainer(cloud, callOptions),
+          {
+            transport: 'cloud-container',
+            path: callOptions.path,
+            method: callOptions.method
+          },
+          (error) => isNetworkFailure(error) || isRetryableStatus(error && error.statusCode)
+        )
+      )
       .then((response) => {
         const normalized = unwrapCloudResponse(response)
         const payload = normalized.data || {}
@@ -172,8 +288,10 @@ function requestByCloudContainer(options) {
           error
         })
         reject({
+          statusCode: error.statusCode,
           message: normalizeErrorMessage(error),
-          code: 'NETWORK_ERROR',
+          code: error.code || 'NETWORK_ERROR',
+          data: error.data || {},
           raw: error
         })
       })
@@ -194,7 +312,7 @@ function requestByHttp(options) {
     wx.request({
       url,
       method,
-      timeout: env.timeout,
+      timeout: getRequestTimeout(),
       data: options.data || {},
       header: {
         'Content-Type': 'application/json',
@@ -239,7 +357,15 @@ function request(options) {
   if (isCloudContainerTransport()) {
     return requestByCloudContainer(options)
   }
-  return requestByHttp(options)
+  return withRetry(
+    () => requestByHttp(options),
+    {
+      transport: 'http',
+      path: options.url,
+      method: (options.method || 'GET').toUpperCase()
+    },
+    (error) => isNetworkFailure(error) || isRetryableStatus(error && error.statusCode)
+  )
 }
 
 function streamRequestByCloudContainer(options) {
@@ -279,7 +405,17 @@ function streamRequestByCloudContainer(options) {
   })
 
   getCloudCaller()
-    .then((cloud) => cloud.callContainer(callOptions))
+    .then((cloud) =>
+      withRetry(
+        () => callCloudContainer(cloud, callOptions),
+        {
+          transport: 'cloud-container-stream',
+          path: callOptions.path,
+          method: callOptions.method
+        },
+        (error) => isNetworkFailure(error) || isRetryableStatus(error && error.statusCode)
+      )
+    )
     .then((response) => {
       if (aborted) {
         return
@@ -315,8 +451,10 @@ function streamRequestByCloudContainer(options) {
       })
       if (typeof options.fail === 'function') {
         options.fail({
+          statusCode: error.statusCode,
           message: normalizeErrorMessage(error),
-          code: 'NETWORK_ERROR',
+          code: error.code || 'NETWORK_ERROR',
+          data: error.data || {},
           raw: error
         })
       }
@@ -347,7 +485,7 @@ function streamRequestByHttp(options) {
   const requestTask = wx.request({
     url,
     method,
-    timeout: env.timeout,
+    timeout: getRequestTimeout(),
     enableChunked: true,
     responseType: 'arraybuffer',
     data: options.data || {},

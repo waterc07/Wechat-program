@@ -19,6 +19,7 @@ class Message(db.Model):
     )
     role = db.Column(db.String(32), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    client_request_id = db.Column(db.String(128), nullable=True, index=True)
     risk_level = db.Column(db.String(32), nullable=False, default="low")
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
 
@@ -30,7 +31,7 @@ class Message(db.Model):
             "consultation_id": self.consultation_id,
             "role": self.role,
             "content": self.content,
+            "client_request_id": self.client_request_id,
             "risk_level": self.risk_level,
             "created_at": self.created_at.isoformat(),
         }
-

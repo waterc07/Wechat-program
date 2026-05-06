@@ -29,6 +29,7 @@ def validate_chat_payload(payload):
     user_id = payload.get("user_id")
     consultation_id = payload.get("consultation_id")
     message = (payload.get("message") or "").strip()
+    client_request_id = (payload.get("client_request_id") or "").strip()
     locale = normalize_locale(payload.get("locale"))
 
     if not isinstance(user_id, int):
@@ -44,6 +45,7 @@ def validate_chat_payload(payload):
         "user_id": user_id,
         "consultation_id": consultation_id,
         "message": message,
+        "client_request_id": client_request_id[:128],
         "locale": locale,
     }
 

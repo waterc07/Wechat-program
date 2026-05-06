@@ -22,6 +22,30 @@ def _build_sse_event(event, data):
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _get_or_add_user_message(consultation, payload):
+    existing_message = consultation_service.find_message_by_client_request_id(
+        consultation.id,
+        payload.get("client_request_id"),
+    )
+    if existing_message is not None and existing_message.role == "user":
+        return existing_message
+
+    return consultation_service.add_message(
+        consultation,
+        "user",
+        payload["message"],
+        risk_level="low",
+        client_request_id=payload.get("client_request_id", ""),
+    )
+
+
+def _find_assistant_after(consultation, user_message):
+    for message in consultation.messages:
+        if message.id > user_message.id and message.role == "assistant":
+            return message
+    return None
+
+
 @chat_bp.post("/chat")
 def chat():
     payload = validate_chat_payload(get_json_payload())
@@ -30,13 +54,20 @@ def chat():
         payload["consultation_id"],
         chief_complaint=payload["message"],
     )
-    user_message = consultation_service.add_message(
-        consultation,
-        "user",
-        payload["message"],
-        risk_level="low",
-    )
+    user_message = _get_or_add_user_message(consultation, payload)
     disclaimer = get_disclaimer(payload["locale"])
+    existing_assistant = _find_assistant_after(consultation, user_message)
+    if existing_assistant is not None:
+        return success_response(
+            {
+                "consultation_id": consultation.id,
+                "created": created,
+                "assistant_message": existing_assistant.to_dict(),
+                "risk_level": existing_assistant.risk_level,
+                "disclaimer": disclaimer,
+            },
+            message="Chat reply reused.",
+        )
 
     risk_result = risk_service.detect(payload["message"])
     if risk_result["risk_level"] == "high":
@@ -109,15 +140,43 @@ def chat_stream():
         payload["consultation_id"],
         chief_complaint=payload["message"],
     )
-    user_message = consultation_service.add_message(
-        consultation,
-        "user",
-        payload["message"],
-        risk_level="low",
-    )
+    user_message = _get_or_add_user_message(consultation, payload)
     consultation_id = consultation.id
     user_message_id = user_message.id
     disclaimer = get_disclaimer(payload["locale"])
+    existing_assistant = _find_assistant_after(consultation, user_message)
+    if existing_assistant is not None:
+        @stream_with_context
+        def generate_reused():
+            yield _build_sse_event(
+                "meta",
+                {
+                    "consultation_id": consultation_id,
+                    "created": created,
+                    "user_message_id": user_message_id,
+                },
+            )
+            yield _build_sse_event("delta", {"delta": existing_assistant.content})
+            yield _build_sse_event(
+                "done",
+                {
+                    "consultation_id": consultation_id,
+                    "created": created,
+                    "assistant_message": existing_assistant.to_dict(),
+                    "risk_level": existing_assistant.risk_level,
+                    "disclaimer": disclaimer,
+                },
+            )
+
+        return Response(
+            generate_reused(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     risk_result = risk_service.detect(payload["message"])
     llm_service = LLMService(current_app.config)
 

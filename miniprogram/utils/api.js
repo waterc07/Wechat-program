@@ -1,5 +1,9 @@
 const { request, streamRequest } = require('./request')
 
+function createClientRequestId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function wxLogin(data) {
   return request({
     url: '/api/auth/wx-login',
@@ -12,7 +16,10 @@ function chat(data) {
   return request({
     url: '/api/chat',
     method: 'POST',
-    data
+    data: {
+      client_request_id: createClientRequestId('chat'),
+      ...data
+    }
   })
 }
 
@@ -20,7 +27,10 @@ function chatStream(data, handlers = {}) {
   return streamRequest({
     url: '/api/chat/stream',
     method: 'POST',
-    data,
+    data: {
+      client_request_id: createClientRequestId('chat-stream'),
+      ...data
+    },
     ...handlers
   })
 }
