@@ -1,6 +1,6 @@
 const env = {
   transport: 'cloud-container',
-  cloudEnv: 'cloud1-d3gjvi0owd7bc5ca9',
+  cloudEnv: 'prod-d5g1plnin0443c04a',
   cloudService: 'test',
   cloudResourceAppid: '',
   cloudResourceEnv: '',
