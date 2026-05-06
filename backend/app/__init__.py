@@ -3,6 +3,7 @@ from flask import Flask
 from .config import get_config, validate_runtime_config
 from .extensions import db
 from .routes import register_blueprints
+from .schema import ensure_runtime_schema
 from .utils.errors import register_error_handlers
 from .utils.logging import configure_logging
 
@@ -25,5 +26,6 @@ def create_app(config_override=None):
         from . import models  # noqa: F401
 
         db.create_all()
+        ensure_runtime_schema()
 
     return app
