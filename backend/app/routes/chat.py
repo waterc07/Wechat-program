@@ -46,6 +46,15 @@ def _find_assistant_after(consultation, user_message):
     return None
 
 
+def _create_fast_chat_llm_service():
+    service = LLMService(current_app.config)
+    chat_timeout = int(current_app.config.get("CHAT_LLM_TIMEOUT_SECONDS", 8))
+    if chat_timeout > 0:
+        service.timeout_seconds = min(service.timeout_seconds, chat_timeout)
+    service.max_retries = 0
+    return service
+
+
 @chat_bp.post("/chat")
 def chat():
     payload = validate_chat_payload(get_json_payload())
@@ -92,7 +101,7 @@ def chat():
             message="Emergency risk detected.",
         )
 
-    llm_service = LLMService(current_app.config)
+    llm_service = _create_fast_chat_llm_service()
     history = [
         item.to_dict()
         for item in consultation.messages
@@ -178,7 +187,7 @@ def chat_stream():
         )
 
     risk_result = risk_service.detect(payload["message"])
-    llm_service = LLMService(current_app.config)
+    llm_service = _create_fast_chat_llm_service()
 
     if risk_result["risk_level"] == "high":
         consultation_for_save = consultation_service.get_consultation(consultation_id)

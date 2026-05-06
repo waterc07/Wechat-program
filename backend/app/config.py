@@ -31,6 +31,7 @@ class Config:
     LLM_API_KEY = os.getenv("LLM_API_KEY", "")
     LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.6-plus")
     LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+    CHAT_LLM_TIMEOUT_SECONDS = int(os.getenv("CHAT_LLM_TIMEOUT_SECONDS", "8"))
     WECHAT_APPID = os.getenv("WECHAT_APPID", "")
     WECHAT_APPSECRET = os.getenv("WECHAT_APPSECRET", "")
     WECHAT_USE_REAL_AUTH = os.getenv("WECHAT_USE_REAL_AUTH", "false").lower() == "true"
