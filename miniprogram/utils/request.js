@@ -155,6 +155,29 @@ function stringToArrayBuffer(text) {
   return buffer
 }
 
+function buildSseEvent(event, data) {
+  return `event: ${event}\ndata: ${JSON.stringify(data || {})}\n\n`
+}
+
+function buildChatSseFromCloudPayload(payload) {
+  const data = payload && payload.data ? payload.data : null
+  const assistantMessage = data && data.assistant_message ? data.assistant_message : null
+  if (!payload || !payload.success || !data || !assistantMessage) {
+    return ''
+  }
+
+  return [
+    buildSseEvent('meta', {
+      consultation_id: data.consultation_id,
+      created: data.created
+    }),
+    buildSseEvent('delta', {
+      delta: assistantMessage.content || ''
+    }),
+    buildSseEvent('done', data)
+  ].join('')
+}
+
 function buildCloudCallOptions(options) {
   if (!wx.cloud || typeof wx.cloud.callContainer !== 'function') {
     throw new Error('wx.cloud.callContainer is unavailable')
@@ -372,8 +395,10 @@ function streamRequestByCloudContainer(options) {
   let aborted = false
   let callOptions = null
   try {
+    const requestUrl = options.url === '/api/chat/stream' ? '/api/chat' : options.url
     callOptions = buildCloudCallOptions({
       ...options,
+      url: requestUrl,
       dataType: 'text',
       header: {
         Accept: 'text/event-stream',
@@ -422,10 +447,12 @@ function streamRequestByCloudContainer(options) {
       }
 
       const normalized = unwrapCloudResponse(response)
+      const simulatedStreamText = buildChatSseFromCloudPayload(normalized.data)
       const bodyText =
-        typeof normalized.data === 'string'
+        simulatedStreamText ||
+        (typeof normalized.data === 'string'
           ? normalized.data
-          : JSON.stringify(normalized.data || {})
+          : JSON.stringify(normalized.data || {}))
 
       if (typeof options.onChunkReceived === 'function' && bodyText) {
         options.onChunkReceived({ data: stringToArrayBuffer(bodyText) })
