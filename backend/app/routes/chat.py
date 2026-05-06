@@ -112,7 +112,13 @@ def chat():
     try:
         reply = llm_service.generate_chat_reply(
             prompt_messages,
-            {"latest_user_message": payload["message"], "locale": payload["locale"]},
+            {
+                "latest_user_message": payload["message"],
+                "locale": payload["locale"],
+                "conversation_text": "\n".join(
+                    f"{item['role']}: {item['content']}" for item in history
+                ),
+            },
         )
     except LLMServiceError as error:
         logger.warning(
@@ -120,7 +126,13 @@ def chat():
             consultation.id,
             error.data,
         )
-        reply = llm_service.build_chat_fallback(payload["message"], payload["locale"])
+        reply = llm_service.build_chat_fallback(
+            payload["message"],
+            payload["locale"],
+            conversation_text="\n".join(
+                f"{item['role']}: {item['content']}" for item in history
+            ),
+        )
 
     assistant_message = consultation_service.add_message(
         consultation,
@@ -239,7 +251,13 @@ def chat_stream():
         try:
             for event in llm_service.stream_chat_reply(
                 prompt_messages,
-                {"latest_user_message": payload["message"], "locale": payload["locale"]},
+                {
+                    "latest_user_message": payload["message"],
+                    "locale": payload["locale"],
+                    "conversation_text": "\n".join(
+                        f"{item['role']}: {item['content']}" for item in history
+                    ),
+                },
             ):
                 if event["type"] == "delta":
                     yield _build_sse_event("delta", {"delta": event["content"]})

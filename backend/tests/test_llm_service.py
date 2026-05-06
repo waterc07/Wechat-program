@@ -210,3 +210,22 @@ def test_chat_fallback_asks_headache_specific_follow_up():
 
     assert "什么部位" in result["content"]
     assert "严重程度" in result["content"]
+
+
+def test_chat_fallback_does_not_reask_answered_fever_fields():
+    service = LLMService({"LLM_PROVIDER": "mock"})
+
+    result = service.build_chat_fallback(
+        "持续两天，今天第二天，最高体温38.1，有咳嗽",
+        "zh-CN",
+        conversation_text=(
+            "user: 头痛，发烧，恶心\n"
+            "assistant: 我现在最想确认的是：这种情况已经持续几天了，最高体温大概多少，还伴有咳嗽、咽痛或怕冷吗？"
+        ),
+    )
+
+    follow_up = result["content"].split("。", 2)[-1]
+    assert "持续几天" not in follow_up
+    assert "最高体温" not in follow_up
+    assert "是否伴有咳嗽" not in follow_up
+    assert "咳嗽有没有痰" in follow_up
