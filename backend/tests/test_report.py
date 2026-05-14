@@ -33,6 +33,39 @@ def test_generate_and_fetch_report(client):
     assert isinstance(fetch_payload["data"]["report"]["possible_conditions"], list)
 
 
+def test_report_fetch_respects_requested_locale(client):
+    user_id = login_user(client, nickname="English报告用户")
+    chat_response = client.post(
+        "/api/chat",
+        json={"user_id": user_id, "message": "我发烧两天，伴随喉咙痛"},
+    )
+    consultation_id = chat_response.get_json()["data"]["consultation_id"]
+
+    zh_response = client.post(
+        "/api/report/generate",
+        json={"consultation_id": consultation_id, "locale": "zh-CN"},
+    )
+    en_response = client.post(
+        "/api/report/generate",
+        json={"consultation_id": consultation_id, "locale": "en-US"},
+    )
+
+    assert zh_response.status_code == 200
+    assert en_response.status_code == 200
+
+    zh_payload = client.get(f"/api/report/{consultation_id}?locale=zh-CN").get_json()
+    en_payload = client.get(f"/api/report/{consultation_id}?locale=en-US").get_json()
+
+    zh_report = zh_payload["data"]["report"]
+    en_report = en_payload["data"]["report"]
+    assert zh_report["raw_payload"]["locale"] == "zh-CN"
+    assert en_report["raw_payload"]["locale"] == "en-US"
+    assert zh_report["recommended_department"] == "全科门诊"
+    assert en_report["recommended_department"] == "General medicine"
+    assert "user:" not in en_report["symptoms_summary"]
+    assert "发烧" not in en_report["symptoms_summary"]
+
+
 def test_generate_report_falls_back_on_invalid_provider_json(client, monkeypatch):
     user_id = login_user(client, nickname="JSON降级用户")
     chat_response = client.post(

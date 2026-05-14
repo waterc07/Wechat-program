@@ -609,7 +609,7 @@ Page({
       .generateReport({ consultation_id: consultationId, locale: this.data.locale })
       .then(() => {
         wx.navigateTo({
-          url: `/pages/report/index?consultationId=${consultationId}`
+          url: `/pages/report/index?consultationId=${consultationId}&locale=${encodeURIComponent(this.data.locale)}`
         })
       })
       .catch((error) => {

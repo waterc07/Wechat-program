@@ -38,6 +38,7 @@ class ReportService:
                 error.data,
             )
             report_payload = self.llm_service.build_report_fallback(conversation_text, locale)
+        report_payload["locale"] = locale
 
         report = Report(
             consultation_id=consultation.id,
@@ -53,9 +54,26 @@ class ReportService:
         db.session.commit()
         return report.to_dict()
 
-    def get_latest_report(self, consultation_id):
+    def get_latest_report(self, consultation_id, locale=None):
         consultation = self.consultation_service.get_consultation(consultation_id)
-        report = Report.query.filter_by(consultation_id=consultation.id).order_by(Report.created_at.desc()).first()
+        query = Report.query.filter_by(consultation_id=consultation.id).order_by(Report.created_at.desc())
+        if locale:
+            report = next(
+                (item for item in query.all() if self._report_matches_locale(item, locale)),
+                None,
+            )
+        else:
+            report = query.first()
         if report is None:
             return None
         return report.to_dict()
+
+    def _report_matches_locale(self, report, locale):
+        try:
+            raw_payload = json.loads(report.raw_payload or "{}")
+        except json.JSONDecodeError:
+            raw_payload = {}
+
+        if raw_payload.get("locale") == locale:
+            return True
+        return report.disclaimer == get_disclaimer(locale)

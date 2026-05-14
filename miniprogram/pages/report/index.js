@@ -6,6 +6,10 @@ const {
   setStoredLocale
 } = require('../../utils/i18n')
 
+function resolveLocale(locale) {
+  return LOCALE_OPTIONS.some((item) => item.code === locale) ? locale : getStoredLocale()
+}
+
 Page({
   data: {
     consultationId: null,
@@ -19,7 +23,9 @@ Page({
   },
 
   onLoad(options) {
-    const locale = getApp().globalData.locale || getStoredLocale()
+    const locale = resolveLocale(options.locale || getApp().globalData.locale)
+    setStoredLocale(locale)
+    getApp().globalData.locale = locale
     this.applyLocale(locale)
 
     const consultationId = Number(options.consultationId || 0)
@@ -33,7 +39,7 @@ Page({
     }
 
     this.setData({ consultationId })
-    this.fetchReport(consultationId)
+    this.fetchReport(consultationId, locale, true)
   },
 
   onShow() {
@@ -63,12 +69,21 @@ Page({
     setStoredLocale(locale)
     getApp().globalData.locale = locale
     this.applyLocale(locale)
+    if (this.data.consultationId) {
+      this.fetchReport(this.data.consultationId, locale, true)
+    }
   },
 
-  fetchReport(consultationId) {
+  fetchReport(consultationId, locale = this.data.locale, generateIfMissing = false) {
     this.setData({ loading: true })
     api
-      .getReport(consultationId)
+      .getReport(consultationId, locale)
+      .catch((error) => {
+        if (generateIfMissing && error.statusCode === 404) {
+          return api.generateReport({ consultation_id: consultationId, locale })
+        }
+        throw error
+      })
       .then((data) => {
         this.setData({
           report: this.decorateReport(data.report)

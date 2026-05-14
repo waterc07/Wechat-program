@@ -55,9 +55,10 @@ function generateReport(data) {
   })
 }
 
-function getReport(consultationId) {
+function getReport(consultationId, locale) {
+  const localeQuery = locale ? `?locale=${encodeURIComponent(locale)}` : ''
   return request({
-    url: `/api/report/${consultationId}`
+    url: `/api/report/${consultationId}${localeQuery}`
   })
 }
 

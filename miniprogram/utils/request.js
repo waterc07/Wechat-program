@@ -296,7 +296,7 @@ function requestByCloudContainer(options) {
       )
       .then((response) => {
         const normalized = unwrapCloudResponse(response)
-        const payload = normalized.data || {}
+        const payload = parseJsonStringPayload(normalized.data) || {}
 
         console.info('[cloud:request:success]', {
           path: callOptions.path,

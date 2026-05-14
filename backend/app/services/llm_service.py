@@ -604,7 +604,7 @@ class LLMService:
                 )
                 else ["Needs further evaluation", "Common mild discomfort"]
             )
-            symptoms_summary = conversation_text[:300] or "The patient has provided an initial symptom description."
+            symptoms_summary = self._build_report_summary_en(conversation_text)
             recommended_department = "General medicine"
             next_step_advice = (
                 "Please add the symptom onset time, duration, triggers, and associated symptoms, and visit an in-person clinic "
@@ -632,3 +632,25 @@ class LLMService:
             "next_step_advice": next_step_advice,
             "disclaimer": get_disclaimer(locale),
         }
+
+    def _build_report_summary_en(self, conversation_text):
+        lower_text = (conversation_text or "").lower()
+        symptoms = []
+        if any(word in lower_text for word in ["fever", "发烧", "发热", "体温"]):
+            symptoms.append("fever")
+        if any(word in lower_text for word in ["cough", "咳"]):
+            symptoms.append("cough")
+        if any(word in lower_text for word in ["sore throat", "throat pain", "喉咙痛", "咽痛", "嗓子痛"]):
+            symptoms.append("sore throat")
+        if any(word in lower_text for word in ["nausea", "vomit", "恶心", "呕吐"]):
+            symptoms.append("nausea or vomiting")
+        if any(word in lower_text for word in ["headache", "head pain", "头痛", "头疼"]):
+            symptoms.append("headache")
+        if any(word in lower_text for word in ["stomach pain", "abdominal pain", "肚子疼", "腹痛"]):
+            symptoms.append("abdominal pain")
+        if any(word in lower_text for word in ["pain", "hurt", "ache", "疼", "痛", "难受"]) and not symptoms:
+            symptoms.append("pain or discomfort")
+
+        if symptoms:
+            return f"The patient reported {', '.join(symptoms)} during the pre-visit conversation."
+        return "The patient has provided an initial symptom description that needs further clinical clarification."
